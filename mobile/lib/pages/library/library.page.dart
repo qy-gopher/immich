@@ -350,10 +350,10 @@ class PlacesCollectionCard extends StatelessWidget {
                 ),
                 child: IgnorePointer(
                   child: MapThumbnail(
-                    zoom: 8,
+                    zoom: 3.7,
                     centre: const LatLng(
-                      21.44950,
-                      -157.91959,
+                      37,
+                      108,
                     ),
                     showAttribution: false,
                     themeMode:
