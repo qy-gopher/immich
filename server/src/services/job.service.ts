@@ -38,8 +38,9 @@ const asJobItem = (dto: JobCreateDto): JobItem => {
 
 @Injectable()
 export class JobService extends BaseService {
+  @OnEvent({ name: 'config.init' })
   @OnEvent({ name: 'config.update', server: true })
-  onConfigUpdate({ newConfig: config }: ArgOf<'config.update'>) {
+  onConfigInitOrUpdate({ newConfig: config }: ArgOf<'config.init'>) {
     if (this.worker !== ImmichWorker.MICROSERVICES) {
       return;
     }
@@ -161,6 +162,10 @@ export class JobService extends BaseService {
 
       case QueueName.LIBRARY: {
         return this.jobRepository.queue({ name: JobName.LIBRARY_QUEUE_SYNC_ALL, data: { force } });
+      }
+
+      case QueueName.BACKUP_DATABASE: {
+        return this.jobRepository.queue({ name: JobName.BACKUP_DATABASE, data: { force } });
       }
 
       default: {
