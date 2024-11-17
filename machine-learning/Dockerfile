@@ -10,7 +10,7 @@ FROM builder-cpu AS builder-armnn
 
 ENV ARMNN_PATH=/opt/armnn
 COPY ann /opt/ann
-RUN mkdir /opt/armnn && mkdir /opt/rknn \
+RUN mkdir /opt/armnn && mkdir /opt/rknn && \
     curl -SL "https://github.com/ARM-software/armnn/releases/download/v24.05/ArmNN-linux-aarch64.tar.gz" | tar -zx -C /opt/armnn && \
     cd /opt/ann && \
     sh build.sh && \
