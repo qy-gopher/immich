@@ -36,6 +36,8 @@ from .schemas import (
     T,
 )
 
+import rknn.clip as rknn_clip
+
 MultiPartParser.max_file_size = 2**26  # spools to disk if payload is 64 MiB or larger
 
 model_cache = ModelCache(revalidate=settings.model_ttl > 0)
@@ -164,8 +166,16 @@ async def run_inference(payload: Image | str, entries: InferenceEntries) -> Infe
             except KeyError:
                 message = f"Task {entry['task']} of type {entry['type']} depends on output of {dep}"
                 raise HTTPException(400, message)
-        model = await load(model)
-        output = await run(model.predict, *inputs, **entry["options"])
+
+        if entry["task"] == "clip":
+            if entry["type"] == "visual":
+                output = rknn_clip.process_image(payload)
+            else:
+                output = rknn_clip.process_txt(payload)
+        else:
+            model = await load(model)
+            output = await run(model.predict, *inputs, **entry["options"])
+
         outputs[model.identity] = output
         response[entry["task"]] = output
 

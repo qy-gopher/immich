@@ -10,10 +10,11 @@ FROM builder-cpu AS builder-armnn
 
 ENV ARMNN_PATH=/opt/armnn
 COPY ann /opt/ann
-RUN mkdir /opt/armnn && \
+RUN mkdir /opt/armnn && mkdir /opt/rknn \
     curl -SL "https://github.com/ARM-software/armnn/releases/download/v24.05/ArmNN-linux-aarch64.tar.gz" | tar -zx -C /opt/armnn && \
     cd /opt/ann && \
-    sh build.sh
+    sh build.sh && \
+    curl -SL "https://github.com/airockchip/rknn-toolkit2/archive/refs/tags/v2.3.0.tar.gz" | tar -zx -C /opt/rknn
 
 FROM builder-${DEVICE} AS builder
 
@@ -64,11 +65,16 @@ FROM prod-cpu AS prod-armnn
 
 ENV LD_LIBRARY_PATH=/opt/armnn
 
+COPY --from=builder-armnn /opt/rknn/rknn-toolkit2-2.3.0/rknpu2/runtime/Linux/librknn_api/aarch64/librknnrt.so /usr/lib/
+COPY --from=builder-armnn /opt/rknn/rknn-toolkit2-2.3.0/rknn-toolkit-lite2/packages/rknn_toolkit_lite2-2.3.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl /
+
 RUN apt-get update && apt-get install -y --no-install-recommends ocl-icd-libopencl1 mesa-opencl-icd libgomp1 && \
     rm -rf /var/lib/apt/lists/* && \
     mkdir --parents /etc/OpenCL/vendors && \
     echo "/usr/lib/libmali.so" > /etc/OpenCL/vendors/mali.icd && \
-    mkdir /opt/armnn
+    mkdir /opt/armnn && \
+    pip install /rknn_toolkit_lite2-2.3.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl && \
+    rm /rknn_toolkit_lite2-2.3.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl
 
 COPY --from=builder-armnn \
     /opt/armnn/libarmnn.so.?? \
