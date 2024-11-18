@@ -32,7 +32,7 @@ RUN poetry config installer.max-workers 10 && \
     poetry config virtualenvs.create false
 RUN python3 -m venv /opt/venv
 
-COPY poetry.lock pyproject.toml ./
+COPY pyproject.toml ./
 RUN poetry install --sync --no-interaction --no-ansi --no-root --with ${DEVICE} --without dev
 
 FROM python:3.11-slim-bookworm@sha256:5148c0e4bbb64271bca1d3322360ebf4bfb7564507ae32dd639322e4952a6b16 AS prod-cpu
