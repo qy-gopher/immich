@@ -18,32 +18,7 @@ txt_onnx_model_path = "/cache/rknn/clip_text.rknn"
 clip_img_model = None
 clip_txt_model = None
 
-IMG_SIZE = 224
-
 _tokenizer = bert.FullTokenizer()
-mean = np.array([0.48145466, 0.4578275, 0.40821073], dtype=np.float32)
-std = np.array([0.26862954, 0.26130258, 0.27577711], dtype=np.float32)
-
-
-def single_image_transform(image, image_size):
-    image = Image.fromarray(np.uint8(image)).resize((image_size, image_size), Image.BICUBIC)
-    image = np.array(Image.fromarray(np.uint8(image)).convert('RGB'))
-    image = np.array(image, dtype=np.float32) / 255.0
-    image = (image - mean) / std
-    return image.astype(np.float32)
-
-
-def image_processor(image_bytes, image_size=224):
-    nparr = np.frombuffer(image_bytes, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-    transformed_batch = [single_image_transform(img, image_size)]
-    transformed_batch = np.array(transformed_batch, dtype=np.float32)  # Shape would be (N, H, W, C)
-
-    # Reorder dimensions to (N, C, H, W)
-    # transformed_batch = np.transpose(transformed_batch, (0, 3, 1, 2))
-
-    return transformed_batch
 
 
 def img_preprocess(image):
