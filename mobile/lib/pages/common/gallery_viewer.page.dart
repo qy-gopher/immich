@@ -61,6 +61,7 @@ class GalleryViewerPage extends HookConsumerWidget {
     final localPosition = useRef<Offset?>(null);
     final currentIndex = useValueNotifier(initialIndex);
     final loadAsset = renderList.loadAsset;
+    final isPlayingMotionVideo = ref.watch(isPlayingMotionVideoProvider);
 
     Future<void> precacheNextImage(int index) async {
       if (!context.mounted) {
@@ -126,18 +127,29 @@ class GalleryViewerPage extends HookConsumerWidget {
         context: context,
         useSafeArea: true,
         builder: (context) {
-          return FractionallySizedBox(
-            heightFactor: 0.75,
-            child: Padding(
-              padding: EdgeInsets.only(
-                bottom: context.viewInsets.bottom,
-              ),
-              child: ref
-                      .watch(appSettingsServiceProvider)
-                      .getSetting<bool>(AppSettingsEnum.advancedTroubleshooting)
-                  ? AdvancedBottomSheet(assetDetail: asset)
-                  : DetailPanel(asset: asset),
-            ),
+          return DraggableScrollableSheet(
+            minChildSize: 0.5,
+            maxChildSize: 1,
+            initialChildSize: 0.75,
+            expand: false,
+            builder: (context, scrollController) {
+              return Padding(
+                padding: EdgeInsets.only(
+                  bottom: context.viewInsets.bottom,
+                ),
+                child: ref.watch(appSettingsServiceProvider).getSetting<bool>(
+                          AppSettingsEnum.advancedTroubleshooting,
+                        )
+                    ? AdvancedBottomSheet(
+                        assetDetail: asset,
+                        scrollController: scrollController,
+                      )
+                    : DetailPanel(
+                        asset: asset,
+                        scrollController: scrollController,
+                      ),
+              );
+            },
           );
         },
       );
@@ -249,7 +261,6 @@ class GalleryViewerPage extends HookConsumerWidget {
     }
 
     PhotoViewGalleryPageOptions buildAsset(BuildContext context, int index) {
-      ref.read(isPlayingMotionVideoProvider.notifier).playing = false;
       var newAsset = loadAsset(index);
       final stackId = newAsset.stackId;
       if (stackId != null && currentIndex.value == index) {
@@ -260,7 +271,7 @@ class GalleryViewerPage extends HookConsumerWidget {
         }
       }
 
-      if (newAsset.isImage && !newAsset.isMotionPhoto) {
+      if (newAsset.isImage && !isPlayingMotionVideo) {
         return buildImage(context, newAsset);
       }
       return buildVideo(context, newAsset);
