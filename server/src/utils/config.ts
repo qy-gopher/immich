@@ -5,20 +5,19 @@ import { load as loadYaml } from 'js-yaml';
 import * as _ from 'lodash';
 import { SystemConfig, defaults } from 'src/config';
 import { SystemConfigDto } from 'src/dtos/system-config.dto';
-import { SystemMetadataKey } from 'src/enum';
-import { IConfigRepository } from 'src/interfaces/config.interface';
-import { DatabaseLock } from 'src/interfaces/database.interface';
-import { ILoggerRepository } from 'src/interfaces/logger.interface';
-import { ISystemMetadataRepository } from 'src/interfaces/system-metadata.interface';
+import { DatabaseLock, SystemMetadataKey } from 'src/enum';
+import { ConfigRepository } from 'src/repositories/config.repository';
+import { LoggingRepository } from 'src/repositories/logging.repository';
+import { SystemMetadataRepository } from 'src/repositories/system-metadata.repository';
+import { DeepPartial } from 'src/types';
 import { getKeysDeep, unsetDeep } from 'src/utils/misc';
-import { DeepPartial } from 'typeorm';
 
 export type SystemConfigValidator = (config: SystemConfig, newConfig: SystemConfig) => void | Promise<void>;
 
 type RepoDeps = {
-  configRepo: IConfigRepository;
-  metadataRepo: ISystemMetadataRepository;
-  logger: ILoggerRepository;
+  configRepo: ConfigRepository;
+  metadataRepo: SystemMetadataRepository;
+  logger: LoggingRepository;
 };
 
 const asyncLock = new AsyncLock();
@@ -61,7 +60,7 @@ export const updateConfig = async (repos: RepoDeps, newConfig: SystemConfig): Pr
     _.set(partialConfig, property, newValue);
   }
 
-  await metadataRepo.set(SystemMetadataKey.SYSTEM_CONFIG, partialConfig);
+  await metadataRepo.set(SystemMetadataKey.SystemConfig, partialConfig);
 
   return getConfig(repos, { withCache: false });
 };
@@ -84,7 +83,7 @@ const buildConfig = async (repos: RepoDeps) => {
   // load partial
   const partial = configFile
     ? await loadFromFile(repos, configFile)
-    : await metadataRepo.get(SystemMetadataKey.SYSTEM_CONFIG);
+    : await metadataRepo.get(SystemMetadataKey.SystemConfig);
 
   // merge with defaults
   const rawConfig = _.cloneDeep(defaults);
@@ -117,7 +116,14 @@ const buildConfig = async (repos: RepoDeps) => {
   const config = instanceToPlain(instance) as SystemConfig;
 
   if (config.server.externalDomain.length > 0) {
-    config.server.externalDomain = new URL(config.server.externalDomain).origin;
+    const domain = new URL(config.server.externalDomain);
+
+    let externalDomain = domain.origin;
+    if (domain.password && domain.username) {
+      externalDomain = `${domain.protocol}//${domain.username}:${domain.password}@${domain.host}`;
+    }
+
+    config.server.externalDomain = externalDomain;
   }
 
   if (!config.ffmpeg.acceptedVideoCodecs.includes(config.ffmpeg.targetVideoCodec)) {

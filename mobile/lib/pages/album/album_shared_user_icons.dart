@@ -2,7 +2,7 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:immich_mobile/entities/user.entity.dart';
+import 'package:immich_mobile/domain/models/user.model.dart';
 import 'package:immich_mobile/providers/album/current_album.provider.dart';
 import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/widgets/common/user_circle_avatar.dart';
@@ -12,7 +12,7 @@ class AlbumSharedUserIcons extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final sharedUsers = useRef<List<User>>(const []);
+    final sharedUsers = useRef<List<UserDto>>(const []);
     sharedUsers.value = ref.watch(
       currentAlbumProvider.select((album) {
         if (album == null) {
@@ -23,7 +23,7 @@ class AlbumSharedUserIcons extends HookConsumerWidget {
           return sharedUsers.value;
         }
 
-        return album.sharedUsers.toList(growable: false);
+        return album.sharedUsers.map((u) => u.toDto()).toList(growable: false);
       }),
     );
 
@@ -32,11 +32,11 @@ class AlbumSharedUserIcons extends HookConsumerWidget {
     }
 
     return GestureDetector(
-      onTap: () => context.pushRoute(AlbumOptionsRoute()),
+      onTap: () => context.pushRoute(const AlbumOptionsRoute()),
       child: SizedBox(
         height: 50,
         child: ListView.builder(
-          padding: const EdgeInsets.only(left: 16),
+          padding: const EdgeInsets.only(left: 16, bottom: 8),
           scrollDirection: Axis.horizontal,
           itemBuilder: ((context, index) {
             return Padding(

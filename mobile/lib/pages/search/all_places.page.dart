@@ -13,13 +13,12 @@ class AllPlacesPage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    AsyncValue<List<SearchCuratedContent>> places =
-        ref.watch(getAllPlacesProvider);
+    AsyncValue<List<SearchCuratedContent>> places = ref.watch(getAllPlacesProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'curated_location_page_title',
+          'places',
         ).tr(),
         leading: IconButton(
           onPressed: () => context.maybePop(),

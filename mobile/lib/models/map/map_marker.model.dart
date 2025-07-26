@@ -4,7 +4,7 @@ import 'package:openapi/api.dart';
 class MapMarker {
   final LatLng latLng;
   final String assetRemoteId;
-  MapMarker({
+  const MapMarker({
     required this.latLng,
     required this.assetRemoteId,
   });
@@ -24,8 +24,7 @@ class MapMarker {
         assetRemoteId = dto.id;
 
   @override
-  String toString() =>
-      'MapMarker(latLng: $latLng, assetRemoteId: $assetRemoteId)';
+  String toString() => 'MapMarker(latLng: $latLng, assetRemoteId: $assetRemoteId)';
 
   @override
   bool operator ==(covariant MapMarker other) {

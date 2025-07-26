@@ -1,4 +1,5 @@
 import 'package:immich_mobile/constants/constants.dart';
+import 'package:immich_mobile/domain/models/store.model.dart';
 import 'package:immich_mobile/entities/album.entity.dart';
 import 'package:immich_mobile/entities/asset.entity.dart';
 import 'package:immich_mobile/entities/store.entity.dart';
@@ -70,6 +71,13 @@ String getThumbnailUrlForRemoteId(
   AssetMediaSize type = AssetMediaSize.thumbnail,
 }) {
   return '${Store.get(StoreKey.serverEndpoint)}/assets/$id/thumbnail?size=${type.value}';
+}
+
+String getPreviewUrlForRemoteId(final String id) =>
+    '${Store.get(StoreKey.serverEndpoint)}/assets/$id/thumbnail?size=${AssetMediaSize.preview}';
+
+String getPlaybackUrlForRemoteId(final String id) {
+  return '${Store.get(StoreKey.serverEndpoint)}/assets/$id/video/playback?';
 }
 
 String getFaceThumbnailUrl(final String personId) {

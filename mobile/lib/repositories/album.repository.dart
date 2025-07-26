@@ -1,43 +1,50 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:immich_mobile/domain/models/store.model.dart';
+import 'package:immich_mobile/domain/models/user.model.dart';
 import 'package:immich_mobile/entities/album.entity.dart';
 import 'package:immich_mobile/entities/asset.entity.dart';
 import 'package:immich_mobile/entities/store.entity.dart';
-import 'package:immich_mobile/entities/user.entity.dart';
-import 'package:immich_mobile/interfaces/album.interface.dart';
+import 'package:immich_mobile/infrastructure/entities/user.entity.dart' as entity;
 import 'package:immich_mobile/models/albums/album_search.model.dart';
 import 'package:immich_mobile/providers/db.provider.dart';
 import 'package:immich_mobile/repositories/database.repository.dart';
+import 'package:immich_mobile/utils/hash.dart';
 import 'package:isar/isar.dart';
 
-final albumRepositoryProvider =
-    Provider((ref) => AlbumRepository(ref.watch(dbProvider)));
+enum AlbumSort { remoteId, localId }
 
-class AlbumRepository extends DatabaseRepository implements IAlbumRepository {
-  AlbumRepository(super.db);
+final albumRepositoryProvider = Provider((ref) => AlbumRepository(ref.watch(dbProvider)));
 
-  @override
+class AlbumRepository extends DatabaseRepository {
+  const AlbumRepository(super.db);
+
   Future<int> count({bool? local}) {
     final baseQuery = db.albums.where();
-    final QueryBuilder<Album, Album, QAfterWhereClause> query;
-    switch (local) {
-      case null:
-        query = baseQuery.noOp();
-      case true:
-        query = baseQuery.localIdIsNotNull();
-      case false:
-        query = baseQuery.remoteIdIsNotNull();
-    }
+    final QueryBuilder<Album, Album, QAfterWhereClause> query = switch (local) {
+      null => baseQuery.noOp(),
+      true => baseQuery.localIdIsNotNull(),
+      false => baseQuery.remoteIdIsNotNull(),
+    };
     return query.count();
   }
 
-  @override
   Future<Album> create(Album album) => txn(() => db.albums.store(album));
 
-  @override
-  Future<Album?> getByName(String name, {bool? shared, bool? remote}) {
+  Future<Album?> getByName(
+    String name, {
+    bool? shared,
+    bool? remote,
+    bool? owner,
+  }) {
     var query = db.albums.filter().nameEqualTo(name);
     if (shared != null) {
       query = query.sharedEqualTo(shared);
+    }
+    final isarUserId = fastHash(Store.get(StoreKey.currentUser).id);
+    if (owner == true) {
+      query = query.owner((q) => q.isarIdEqualTo(isarUserId));
+    } else if (owner == false) {
+      query = query.owner((q) => q.not().isarIdEqualTo(isarUserId));
     }
     if (remote == true) {
       query = query.localIdIsNull();
@@ -47,13 +54,10 @@ class AlbumRepository extends DatabaseRepository implements IAlbumRepository {
     return query.findFirst();
   }
 
-  @override
   Future<Album> update(Album album) => txn(() => db.albums.store(album));
 
-  @override
   Future<void> delete(int albumId) => txn(() => db.albums.delete(albumId));
 
-  @override
   Future<List<Album>> getAll({
     bool? shared,
     bool? remote,
@@ -69,84 +73,81 @@ class AlbumRepository extends DatabaseRepository implements IAlbumRepository {
     } else {
       afterWhere = baseQuery.localIdIsNotNull();
     }
-    QueryBuilder<Album, Album, QAfterFilterCondition> filterQuery =
-        afterWhere.filter().noOp();
+    QueryBuilder<Album, Album, QAfterFilterCondition> filterQuery = afterWhere.filter().noOp();
     if (shared != null) {
       filterQuery = filterQuery.sharedEqualTo(true);
     }
     if (ownerId != null) {
       filterQuery = filterQuery.owner((q) => q.isarIdEqualTo(ownerId));
     }
-    final QueryBuilder<Album, Album, QAfterSortBy> query;
-    switch (sortBy) {
-      case null:
-        query = filterQuery.noOp();
-      case AlbumSort.remoteId:
-        query = filterQuery.sortByRemoteId();
-      case AlbumSort.localId:
-        query = filterQuery.sortByLocalId();
-    }
+    final QueryBuilder<Album, Album, QAfterSortBy> query = switch (sortBy) {
+      null => filterQuery.noOp(),
+      AlbumSort.remoteId => filterQuery.sortByRemoteId(),
+      AlbumSort.localId => filterQuery.sortByLocalId(),
+    };
     return query.findAll();
   }
 
-  @override
   Future<Album?> get(int id) => db.albums.get(id);
 
-  @override
-  Future<void> removeUsers(Album album, List<User> users) =>
-      txn(() => album.sharedUsers.update(unlink: users));
+  Future<Album?> getByRemoteId(String remoteId) {
+    return db.albums.filter().remoteIdEqualTo(remoteId).findFirst();
+  }
 
-  @override
-  Future<void> addAssets(Album album, List<Asset> assets) =>
-      txn(() => album.assets.update(link: assets));
+  Future<void> removeUsers(Album album, List<UserDto> users) => txn(
+        () => album.sharedUsers.update(unlink: users.map(entity.User.fromDto)),
+      );
 
-  @override
-  Future<void> removeAssets(Album album, List<Asset> assets) =>
-      txn(() => album.assets.update(unlink: assets));
+  Future<void> addAssets(Album album, List<Asset> assets) => txn(() => album.assets.update(link: assets));
 
-  @override
+  Future<void> removeAssets(Album album, List<Asset> assets) => txn(() => album.assets.update(unlink: assets));
+
   Future<Album> recalculateMetadata(Album album) async {
     album.startDate = await album.assets.filter().fileCreatedAtProperty().min();
     album.endDate = await album.assets.filter().fileCreatedAtProperty().max();
-    album.lastModifiedAssetTimestamp =
-        await album.assets.filter().updatedAtProperty().max();
+    album.lastModifiedAssetTimestamp = await album.assets.filter().updatedAtProperty().max();
     return album;
   }
 
-  @override
-  Future<void> addUsers(Album album, List<User> users) =>
-      txn(() => album.sharedUsers.update(link: users));
+  Future<void> addUsers(Album album, List<UserDto> users) =>
+      txn(() => album.sharedUsers.update(link: users.map(entity.User.fromDto)));
 
-  @override
-  Future<void> deleteAllLocal() =>
-      txn(() => db.albums.where().localIdIsNotNull().deleteAll());
+  Future<void> deleteAllLocal() => txn(() => db.albums.where().localIdIsNotNull().deleteAll());
 
-  @override
   Future<List<Album>> search(
     String searchTerm,
     QuickFilterMode filterMode,
   ) async {
-    var query = db.albums
-        .filter()
-        .nameContains(searchTerm, caseSensitive: false)
-        .remoteIdIsNotNull();
+    var query = db.albums.filter().nameContains(searchTerm, caseSensitive: false).remoteIdIsNotNull();
+    final isarUserId = fastHash(Store.get(StoreKey.currentUser).id);
 
     switch (filterMode) {
       case QuickFilterMode.sharedWithMe:
-        query = query.owner(
-          (q) => q.not().isarIdEqualTo(Store.get(StoreKey.currentUser).isarId),
-        );
-        break;
+        query = query.owner((q) => q.not().isarIdEqualTo(isarUserId));
       case QuickFilterMode.myAlbums:
-        query = query.owner(
-          (q) => q.isarIdEqualTo(Store.get(StoreKey.currentUser).isarId),
-        );
-        break;
+        query = query.owner((q) => q.isarIdEqualTo(isarUserId));
       case QuickFilterMode.all:
-      default:
         break;
     }
 
     return await query.findAll();
+  }
+
+  Future<void> clearTable() async {
+    await txn(() async {
+      await db.albums.clear();
+    });
+  }
+
+  Stream<List<Album>> watchRemoteAlbums() {
+    return db.albums.where().remoteIdIsNotNull().watch();
+  }
+
+  Stream<List<Album>> watchLocalAlbums() {
+    return db.albums.where().localIdIsNotNull().watch();
+  }
+
+  Stream<Album?> watchAlbum(int id) {
+    return db.albums.watchObject(id, fireImmediately: true);
   }
 }

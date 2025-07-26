@@ -1,5 +1,5 @@
 import { SystemConfig } from 'src/config';
-import { DeepPartial } from 'typeorm';
+import { DeepPartial } from 'src/types';
 
 export const systemConfigStub = {
   enabled: {
@@ -45,11 +45,6 @@ export const systemConfigStub = {
       enabled: true,
       autoRegister: true,
       defaultStorageQuota: 1,
-    },
-  },
-  deleteDelay30: {
-    user: {
-      deleteDelay: 30,
     },
   },
   libraryWatchEnabled: {

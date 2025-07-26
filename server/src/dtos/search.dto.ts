@@ -1,12 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsNotEmpty, IsString, Max, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsString, Max, Min } from 'class-validator';
+import { Place } from 'src/database';
 import { PropertyLifecycle } from 'src/decorators';
 import { AlbumResponseDto } from 'src/dtos/album.dto';
 import { AssetResponseDto } from 'src/dtos/asset-response.dto';
-import { GeodataPlacesEntity } from 'src/entities/geodata-places.entity';
-import { AssetOrder, AssetType } from 'src/enum';
-import { Optional, ValidateBoolean, ValidateDate, ValidateUUID } from 'src/validation';
+import { AssetOrder, AssetType, AssetVisibility } from 'src/enum';
+import { Optional, ValidateBoolean, ValidateDate, ValidateEnum, ValidateUUID } from 'src/validation';
 
 class BaseSearchDto {
   @ValidateUUID({ optional: true, nullable: true })
@@ -17,17 +17,8 @@ class BaseSearchDto {
   @Optional()
   deviceId?: string;
 
-  @IsEnum(AssetType)
-  @Optional()
-  @ApiProperty({ enumName: 'AssetTypeEnum', enum: AssetType })
+  @ValidateEnum({ enum: AssetType, name: 'AssetTypeEnum', optional: true })
   type?: AssetType;
-
-  @ValidateBoolean({ optional: true })
-  isArchived?: boolean;
-
-  @ValidateBoolean({ optional: true })
-  @ApiProperty({ default: false })
-  withArchived?: boolean;
 
   @ValidateBoolean({ optional: true })
   isEncoded?: boolean;
@@ -41,14 +32,8 @@ class BaseSearchDto {
   @ValidateBoolean({ optional: true })
   isOffline?: boolean;
 
-  @ValidateBoolean({ optional: true })
-  isVisible?: boolean;
-
-  @ValidateBoolean({ optional: true })
-  withDeleted?: boolean;
-
-  @ValidateBoolean({ optional: true })
-  withExif?: boolean;
+  @ValidateEnum({ enum: AssetVisibility, name: 'AssetVisibility', optional: true })
+  visibility?: AssetVisibility;
 
   @ValidateDate({ optional: true })
   createdBefore?: Date;
@@ -99,21 +84,41 @@ class BaseSearchDto {
   @Optional({ nullable: true, emptyToNull: true })
   lensModel?: string | null;
 
+  @ValidateBoolean({ optional: true })
+  isNotInAlbum?: boolean;
+
+  @ValidateUUID({ each: true, optional: true })
+  personIds?: string[];
+
+  @ValidateUUID({ each: true, optional: true, nullable: true })
+  tagIds?: string[] | null;
+
+  @ValidateUUID({ each: true, optional: true })
+  albumIds?: string[];
+
+  @Optional()
+  @IsInt()
+  @Max(5)
+  @Min(-1)
+  rating?: number;
+}
+
+class BaseSearchWithResultsDto extends BaseSearchDto {
+  @ValidateBoolean({ optional: true })
+  withDeleted?: boolean;
+
+  @ValidateBoolean({ optional: true })
+  withExif?: boolean;
+
   @IsInt()
   @Min(1)
   @Max(1000)
   @Type(() => Number)
   @Optional()
   size?: number;
-
-  @ValidateBoolean({ optional: true })
-  isNotInAlbum?: boolean;
-
-  @ValidateUUID({ each: true, optional: true })
-  personIds?: string[];
 }
 
-export class RandomSearchDto extends BaseSearchDto {
+export class RandomSearchDto extends BaseSearchWithResultsDto {
   @ValidateBoolean({ optional: true })
   withStacked?: boolean;
 
@@ -129,6 +134,11 @@ export class MetadataSearchDto extends RandomSearchDto {
   @IsNotEmpty()
   @Optional()
   deviceAssetId?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @Optional()
+  description?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -160,9 +170,7 @@ export class MetadataSearchDto extends RandomSearchDto {
   @Optional()
   encodedVideoPath?: string;
 
-  @IsEnum(AssetOrder)
-  @Optional()
-  @ApiProperty({ enumName: 'AssetOrder', enum: AssetOrder })
+  @ValidateEnum({ enum: AssetOrder, name: 'AssetOrder', optional: true, default: AssetOrder.Desc })
   order?: AssetOrder;
 
   @IsInt()
@@ -172,10 +180,22 @@ export class MetadataSearchDto extends RandomSearchDto {
   page?: number;
 }
 
-export class SmartSearchDto extends BaseSearchDto {
+export class StatisticsSearchDto extends BaseSearchDto {
+  @IsString()
+  @IsNotEmpty()
+  @Optional()
+  description?: string;
+}
+
+export class SmartSearchDto extends BaseSearchWithResultsDto {
   @IsString()
   @IsNotEmpty()
   query!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @Optional()
+  language?: string;
 
   @IsInt()
   @Min(1)
@@ -207,15 +227,16 @@ export class PlacesResponseDto {
   admin2name?: string;
 }
 
-export function mapPlaces(place: GeodataPlacesEntity): PlacesResponseDto {
+export function mapPlaces(place: Place): PlacesResponseDto {
   return {
     name: place.name,
     latitude: place.latitude,
     longitude: place.longitude,
-    admin1name: place.admin1Name,
-    admin2name: place.admin2Name,
+    admin1name: place.admin1Name ?? undefined,
+    admin2name: place.admin2Name ?? undefined,
   };
 }
+
 export enum SearchSuggestionType {
   COUNTRY = 'country',
   STATE = 'state',
@@ -225,9 +246,7 @@ export enum SearchSuggestionType {
 }
 
 export class SearchSuggestionRequestDto {
-  @IsEnum(SearchSuggestionType)
-  @IsNotEmpty()
-  @ApiProperty({ enumName: 'SearchSuggestionType', enum: SearchSuggestionType })
+  @ValidateEnum({ enum: SearchSuggestionType, name: 'SearchSuggestionType' })
   type!: SearchSuggestionType;
 
   @IsString()
@@ -284,6 +303,11 @@ class SearchAssetResponseDto {
 export class SearchResponseDto {
   albums!: SearchAlbumResponseDto;
   assets!: SearchAssetResponseDto;
+}
+
+export class SearchStatisticsResponseDto {
+  @ApiProperty({ type: 'integer' })
+  total!: number;
 }
 
 class SearchExploreItem {

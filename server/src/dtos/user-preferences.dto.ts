@@ -1,14 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDateString, IsEnum, IsInt, IsPositive, ValidateNested } from 'class-validator';
-import { UserPreferences } from 'src/entities/user-metadata.entity';
-import { UserAvatarColor } from 'src/enum';
-import { Optional, ValidateBoolean } from 'src/validation';
+import { IsDateString, IsInt, IsPositive, ValidateNested } from 'class-validator';
+import { AssetOrder, UserAvatarColor } from 'src/enum';
+import { UserPreferences } from 'src/types';
+import { Optional, ValidateBoolean, ValidateEnum } from 'src/validation';
 
 class AvatarUpdate {
-  @Optional()
-  @IsEnum(UserAvatarColor)
-  @ApiProperty({ enumName: 'UserAvatarColor', enum: UserAvatarColor })
+  @ValidateEnum({ enum: UserAvatarColor, name: 'UserAvatarColor', optional: true })
   color?: UserAvatarColor;
 }
 
@@ -22,6 +20,11 @@ class RatingsUpdate {
   enabled?: boolean;
 }
 
+class AlbumsUpdate {
+  @ValidateEnum({ enum: AssetOrder, name: 'AssetOrder', optional: true })
+  defaultAssetOrder?: AssetOrder;
+}
+
 class FoldersUpdate {
   @ValidateBoolean({ optional: true })
   enabled?: boolean;
@@ -31,6 +34,14 @@ class FoldersUpdate {
 }
 
 class PeopleUpdate {
+  @ValidateBoolean({ optional: true })
+  enabled?: boolean;
+
+  @ValidateBoolean({ optional: true })
+  sidebarWeb?: boolean;
+}
+
+class SharedLinksUpdate {
   @ValidateBoolean({ optional: true })
   enabled?: boolean;
 
@@ -77,7 +88,17 @@ class PurchaseUpdate {
   hideBuyButtonUntil?: string;
 }
 
+class CastUpdate {
+  @ValidateBoolean({ optional: true })
+  gCastEnabled?: boolean;
+}
+
 export class UserPreferencesUpdateDto {
+  @Optional()
+  @ValidateNested()
+  @Type(() => AlbumsUpdate)
+  albums?: AlbumsUpdate;
+
   @Optional()
   @ValidateNested()
   @Type(() => FoldersUpdate)
@@ -97,6 +118,11 @@ export class UserPreferencesUpdateDto {
   @ValidateNested()
   @Type(() => RatingsUpdate)
   ratings?: RatingsUpdate;
+
+  @Optional()
+  @ValidateNested()
+  @Type(() => SharedLinksUpdate)
+  sharedLinks?: SharedLinksUpdate;
 
   @Optional()
   @ValidateNested()
@@ -122,11 +148,16 @@ export class UserPreferencesUpdateDto {
   @ValidateNested()
   @Type(() => PurchaseUpdate)
   purchase?: PurchaseUpdate;
+
+  @Optional()
+  @ValidateNested()
+  @Type(() => CastUpdate)
+  cast?: CastUpdate;
 }
 
-class AvatarResponse {
-  @ApiProperty({ enumName: 'UserAvatarColor', enum: UserAvatarColor })
-  color!: UserAvatarColor;
+class AlbumsResponse {
+  @ValidateEnum({ enum: AssetOrder, name: 'AssetOrder' })
+  defaultAssetOrder: AssetOrder = AssetOrder.Desc;
 }
 
 class RatingsResponse {
@@ -152,6 +183,11 @@ class TagsResponse {
   sidebarWeb: boolean = true;
 }
 
+class SharedLinksResponse {
+  enabled: boolean = true;
+  sidebarWeb: boolean = false;
+}
+
 class EmailNotificationsResponse {
   enabled!: boolean;
   albumInvite!: boolean;
@@ -170,16 +206,22 @@ class PurchaseResponse {
   hideBuyButtonUntil!: string;
 }
 
+class CastResponse {
+  gCastEnabled: boolean = false;
+}
+
 export class UserPreferencesResponseDto implements UserPreferences {
+  albums!: AlbumsResponse;
   folders!: FoldersResponse;
   memories!: MemoriesResponse;
   people!: PeopleResponse;
   ratings!: RatingsResponse;
+  sharedLinks!: SharedLinksResponse;
   tags!: TagsResponse;
-  avatar!: AvatarResponse;
   emailNotifications!: EmailNotificationsResponse;
   download!: DownloadResponse;
   purchase!: PurchaseResponse;
+  cast!: CastResponse;
 }
 
 export const mapPreferences = (preferences: UserPreferences): UserPreferencesResponseDto => {

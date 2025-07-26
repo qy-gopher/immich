@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { MetricOptions } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
@@ -7,19 +7,22 @@ import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { IORedisInstrumentation } from '@opentelemetry/instrumentation-ioredis';
 import { NestInstrumentation } from '@opentelemetry/instrumentation-nestjs-core';
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
-import { NodeSDK, contextBase, metrics, resources } from '@opentelemetry/sdk-node';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { AggregationType } from '@opentelemetry/sdk-metrics';
+import { NodeSDK, contextBase } from '@opentelemetry/sdk-node';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { ClassConstructor } from 'class-transformer';
 import { snakeCase, startCase } from 'lodash';
 import { MetricService } from 'nestjs-otel';
 import { copyMetadataFromFunctionToFunction } from 'nestjs-otel/lib/opentelemetry.utils';
 import { serverVersion } from 'src/constants';
 import { ImmichTelemetry, MetadataKey } from 'src/enum';
-import { IConfigRepository } from 'src/interfaces/config.interface';
-import { ILoggerRepository } from 'src/interfaces/logger.interface';
-import { IMetricGroupRepository, ITelemetryRepository, MetricGroupOptions } from 'src/interfaces/telemetry.interface';
+import { ConfigRepository } from 'src/repositories/config.repository';
+import { LoggingRepository } from 'src/repositories/logging.repository';
 
-class MetricGroupRepository implements IMetricGroupRepository {
+type MetricGroupOptions = { enabled: boolean };
+
+export class MetricGroupRepository {
   private enabled = false;
 
   constructor(private metricService: MetricService) {}
@@ -48,10 +51,9 @@ class MetricGroupRepository implements IMetricGroupRepository {
   }
 }
 
-const aggregation = new metrics.ExplicitBucketHistogramAggregation(
-  [0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10_000],
-  true,
-);
+const aggregationBoundaries = [
+  0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10_000,
+];
 
 let instance: NodeSDK | undefined;
 
@@ -60,9 +62,9 @@ export const bootstrapTelemetry = (port: number) => {
     throw new Error('OpenTelemetry SDK already started');
   }
   instance = new NodeSDK({
-    resource: new resources.Resource({
-      [SemanticResourceAttributes.SERVICE_NAME]: `immich`,
-      [SemanticResourceAttributes.SERVICE_VERSION]: serverVersion.toString(),
+    resource: resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: `immich`,
+      [ATTR_SERVICE_VERSION]: serverVersion.toString(),
     }),
     metricReader: new PrometheusExporter({ port }),
     contextManager: new AsyncLocalStorageContextManager(),
@@ -72,7 +74,16 @@ export const bootstrapTelemetry = (port: number) => {
       new NestInstrumentation(),
       new PgInstrumentation(),
     ],
-    views: [new metrics.View({ aggregation, instrumentName: '*', instrumentUnit: 'ms' })],
+    views: [
+      {
+        instrumentName: '*',
+        instrumentUnit: 'ms',
+        aggregation: {
+          type: AggregationType.EXPLICIT_BUCKET_HISTOGRAM,
+          options: { boundaries: aggregationBoundaries },
+        },
+      },
+    ],
   });
 
   instance.start();
@@ -86,7 +97,7 @@ export const teardownTelemetry = async () => {
 };
 
 @Injectable()
-export class TelemetryRepository implements ITelemetryRepository {
+export class TelemetryRepository {
   api: MetricGroupRepository;
   host: MetricGroupRepository;
   jobs: MetricGroupRepository;
@@ -95,27 +106,27 @@ export class TelemetryRepository implements ITelemetryRepository {
   constructor(
     private metricService: MetricService,
     private reflect: Reflector,
-    @Inject(IConfigRepository) private configRepository: IConfigRepository,
-    @Inject(ILoggerRepository) private logger: ILoggerRepository,
+    private configRepository: ConfigRepository,
+    private logger: LoggingRepository,
   ) {
     const { telemetry } = this.configRepository.getEnv();
     const { metrics } = telemetry;
 
-    this.api = new MetricGroupRepository(metricService).configure({ enabled: metrics.has(ImmichTelemetry.API) });
-    this.host = new MetricGroupRepository(metricService).configure({ enabled: metrics.has(ImmichTelemetry.HOST) });
-    this.jobs = new MetricGroupRepository(metricService).configure({ enabled: metrics.has(ImmichTelemetry.JOB) });
-    this.repo = new MetricGroupRepository(metricService).configure({ enabled: metrics.has(ImmichTelemetry.REPO) });
+    this.api = new MetricGroupRepository(metricService).configure({ enabled: metrics.has(ImmichTelemetry.Api) });
+    this.host = new MetricGroupRepository(metricService).configure({ enabled: metrics.has(ImmichTelemetry.Host) });
+    this.jobs = new MetricGroupRepository(metricService).configure({ enabled: metrics.has(ImmichTelemetry.Job) });
+    this.repo = new MetricGroupRepository(metricService).configure({ enabled: metrics.has(ImmichTelemetry.Repo) });
   }
 
   setup({ repositories }: { repositories: ClassConstructor<unknown>[] }) {
     const { telemetry } = this.configRepository.getEnv();
     const { metrics } = telemetry;
-    if (!metrics.has(ImmichTelemetry.REPO)) {
+    if (!metrics.has(ImmichTelemetry.Repo)) {
       return;
     }
 
     for (const Repository of repositories) {
-      const isEnabled = this.reflect.get(MetadataKey.TELEMETRY_ENABLED, Repository) ?? true;
+      const isEnabled = this.reflect.get(MetadataKey.TelemetryEnabled, Repository) ?? true;
       if (!isEnabled) {
         this.logger.debug(`Telemetry disabled for ${Repository.name}`);
         continue;

@@ -3,13 +3,17 @@ import {
   AssetMediaCreateDto,
   AssetMediaResponseDto,
   AssetResponseDto,
+  AssetVisibility,
   CheckExistingAssetsDto,
   CreateAlbumDto,
   CreateLibraryDto,
+  JobCommandDto,
+  JobName,
   MetadataSearchDto,
   Permission,
   PersonCreateDto,
   SharedLinkCreateDto,
+  UpdateLibraryDto,
   UserAdminCreateDto,
   UserPreferencesUpdateDto,
   ValidateLibraryDto,
@@ -25,9 +29,12 @@ import {
   deleteAssets,
   getAllJobsStatus,
   getAssetInfo,
+  getConfig,
   getConfigDefaults,
   login,
+  scanLibrary,
   searchAssets,
+  sendJobCommand,
   setBaseUrl,
   signUpAdmin,
   tagAssets,
@@ -35,6 +42,7 @@ import {
   updateAlbumUser,
   updateAssets,
   updateConfig,
+  updateLibrary,
   updateMyPreferences,
   upsertTags,
   validate,
@@ -42,7 +50,7 @@ import {
 import { BrowserContext } from '@playwright/test';
 import { exec, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path, { dirname } from 'node:path';
 import { setTimeout as setAsyncTimeout } from 'node:timers/promises';
@@ -52,6 +60,7 @@ import { io, type Socket } from 'socket.io-client';
 import { loginDto, signupDto } from 'src/fixtures';
 import { makeRandomImage } from 'src/generators';
 import request from 'supertest';
+export type { Emitter } from '@socket.io/component-emitter';
 
 type CommandResponse = { stdout: string; stderr: string; exitCode: number | null };
 type EventType = 'assetUpload' | 'assetUpdate' | 'assetDelete' | 'userDelete' | 'assetHidden';
@@ -74,11 +83,12 @@ export const immichCli = (args: string[]) =>
 export const immichAdmin = (args: string[]) =>
   executeCommand('docker', ['exec', '-i', 'immich-e2e-server', '/bin/bash', '-c', `immich-admin ${args.join(' ')}`]);
 export const specialCharStrings = ["'", '"', ',', '{', '}', '*'];
+export const TEN_TIMES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 
-const executeCommand = (command: string, args: string[]) => {
+const executeCommand = (command: string, args: string[], options?: { cwd?: string }) => {
   let _resolve: (value: CommandResponse) => void;
   const promise = new Promise<CommandResponse>((resolve) => (_resolve = resolve));
-  const child = spawn(command, args, { stdio: 'pipe' });
+  const child = spawn(command, args, { stdio: 'pipe', cwd: options?.cwd });
 
   let stdout = '';
   let stderr = '';
@@ -114,6 +124,7 @@ const execPromise = promisify(exec);
 const onEvent = ({ event, id }: { event: EventType; id: string }) => {
   // console.log(`Received event: ${event} [id=${id}]`);
   const set = events[event];
+
   set.add(id);
 
   const idCallback = idCallbacks[id];
@@ -143,19 +154,19 @@ export const utils = {
 
       tables = tables || [
         // TODO e2e test for deleting a stack, since it is quite complex
-        'asset_stack',
-        'libraries',
-        'shared_links',
+        'stack',
+        'library',
+        'shared_link',
         'person',
-        'albums',
-        'assets',
-        'asset_faces',
+        'album',
+        'asset',
+        'asset_face',
         'activity',
-        'api_keys',
-        'sessions',
-        'users',
+        'api_key',
+        'session',
+        'user',
         'system_metadata',
-        'tags',
+        'tag',
       ];
 
       const sql: string[] = [];
@@ -164,7 +175,7 @@ export const utils = {
         if (table === 'system_metadata') {
           sql.push(`DELETE FROM "system_metadata" where "key" NOT IN ('reverse-geocoding-state', 'system-flags');`);
         } else {
-          sql.push(`DELETE FROM ${table} CASCADE;`);
+          sql.push(`DELETE FROM "${table}" CASCADE;`);
         }
       }
 
@@ -392,6 +403,14 @@ export const utils = {
     rmSync(path);
   },
 
+  renameImageFile: (oldPath: string, newPath: string) => {
+    if (!existsSync(oldPath)) {
+      return;
+    }
+
+    renameSync(oldPath, newPath);
+  },
+
   removeDirectory: (path: string) => {
     if (!existsSync(path)) {
       return;
@@ -399,6 +418,8 @@ export const utils = {
 
     rmSync(path, { recursive: true });
   },
+
+  getSystemConfig: (accessToken: string) => getConfig({ headers: asBearerAuth(accessToken) }),
 
   getAssetInfo: (accessToken: string, id: string) => getAssetInfo({ id }, { headers: asBearerAuth(accessToken) }),
 
@@ -410,7 +431,10 @@ export const utils = {
   },
 
   archiveAssets: (accessToken: string, ids: string[]) =>
-    updateAssets({ assetBulkUpdateDto: { ids, isArchived: true } }, { headers: asBearerAuth(accessToken) }),
+    updateAssets(
+      { assetBulkUpdateDto: { ids, visibility: AssetVisibility.Archive } },
+      { headers: asBearerAuth(accessToken) },
+    ),
 
   deleteAssets: (accessToken: string, ids: string[]) =>
     deleteAssets({ assetBulkDeleteDto: { ids } }, { headers: asBearerAuth(accessToken) }),
@@ -427,7 +451,7 @@ export const utils = {
       return;
     }
 
-    await client.query('INSERT INTO asset_faces ("assetId", "personId") VALUES ($1, $2)', [assetId, personId]);
+    await client.query('INSERT INTO asset_face ("assetId", "personId") VALUES ($1, $2)', [assetId, personId]);
   },
 
   setPersonThumbnail: async (personId: string) => {
@@ -447,6 +471,9 @@ export const utils = {
   validateLibrary: (accessToken: string, id: string, dto: ValidateLibraryDto) =>
     validate({ id, validateLibraryDto: dto }, { headers: asBearerAuth(accessToken) }),
 
+  updateLibrary: (accessToken: string, id: string, dto: UpdateLibraryDto) =>
+    updateLibrary({ id, updateLibraryDto: dto }, { headers: asBearerAuth(accessToken) }),
+
   createPartner: (accessToken: string, id: string) => createPartner({ id }, { headers: asBearerAuth(accessToken) }),
 
   updateMyPreferences: (accessToken: string, userPreferencesUpdateDto: UserPreferencesUpdateDto) =>
@@ -461,6 +488,9 @@ export const utils = {
   tagAssets: (accessToken: string, tagId: string, assetIds: string[]) =>
     tagAssets({ id: tagId, bulkIdsDto: { ids: assetIds } }, { headers: asBearerAuth(accessToken) }),
 
+  jobCommand: async (accessToken: string, jobName: JobName, jobCommandDto: JobCommandDto) =>
+    sendJobCommand({ id: jobName, jobCommandDto }, { headers: asBearerAuth(accessToken) }),
+
   setAuthCookies: async (context: BrowserContext, accessToken: string, domain = '127.0.0.1') =>
     await context.addCookies([
       {
@@ -468,7 +498,7 @@ export const utils = {
         value: accessToken,
         domain,
         path: '/',
-        expires: 1_742_402_728,
+        expires: 2_058_028_213,
         httpOnly: true,
         secure: false,
         sameSite: 'Lax',
@@ -478,7 +508,7 @@ export const utils = {
         value: 'password',
         domain,
         path: '/',
-        expires: 1_742_402_728,
+        expires: 2_058_028_213,
         httpOnly: true,
         secure: false,
         sameSite: 'Lax',
@@ -488,7 +518,7 @@ export const utils = {
         value: 'true',
         domain,
         path: '/',
-        expires: 1_742_402_728,
+        expires: 2_058_028_213,
         httpOnly: false,
         secure: false,
         sameSite: 'Lax',
@@ -512,6 +542,7 @@ export const utils = {
   },
 
   waitForQueueFinish: (accessToken: string, queue: keyof AllJobStatusResponseDto, ms?: number) => {
+    // eslint-disable-next-line no-async-promise-executor
     return new Promise<void>(async (resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Timed out waiting for queue to empty')), ms || 10_000);
 
@@ -532,6 +563,14 @@ export const utils = {
     const key = await utils.createApiKey(accessToken, [Permission.All]);
     await immichCli(['login', app, `${key.secret}`]);
     return key.secret;
+  },
+
+  scan: async (accessToken: string, id: string) => {
+    await scanLibrary({ id }, { headers: asBearerAuth(accessToken) });
+
+    await utils.waitForQueueFinish(accessToken, 'library');
+    await utils.waitForQueueFinish(accessToken, 'sidecar');
+    await utils.waitForQueueFinish(accessToken, 'metadataExtraction');
   },
 };
 

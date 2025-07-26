@@ -55,9 +55,7 @@ void main() {
     expect(find.byType(ConfirmDialog), findsOneWidget);
   });
 
-  testWidgets(
-      'Ok action in ConfirmDialog should call onDismiss with activityId',
-      (tester) async {
+  testWidgets('Ok action in ConfirmDialog should call onDismiss with activityId', (tester) async {
     String? receivedActivityId;
     await tester.pumpConsumerWidget(
       DismissibleActivity(
@@ -72,7 +70,7 @@ void main() {
     await tester.drag(dismissible, const Offset(-500, 0));
     await tester.pumpAndSettle();
 
-    final okButton = find.text('delete_dialog_ok');
+    final okButton = find.text('delete');
     await tester.tap(okButton);
     await tester.pumpAndSettle();
 

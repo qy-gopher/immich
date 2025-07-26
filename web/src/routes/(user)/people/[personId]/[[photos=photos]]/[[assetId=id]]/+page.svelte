@@ -1,24 +1,28 @@
 <script lang="ts">
-  import { afterNavigate, goto } from '$app/navigation';
+  import { afterNavigate, goto, invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
+  import { clickOutside } from '$lib/actions/click-outside';
+  import { listNavigation } from '$lib/actions/list-navigation';
   import { scrollMemoryClearer } from '$lib/actions/scroll-memory';
   import ImageThumbnail from '$lib/components/assets/thumbnail/image-thumbnail.svelte';
   import EditNameInput from '$lib/components/faces-page/edit-name-input.svelte';
   import MergeFaceSelector from '$lib/components/faces-page/merge-face-selector.svelte';
-  import MergeSuggestionModal from '$lib/components/faces-page/merge-suggestion-modal.svelte';
-  import SetBirthDateModal from '$lib/components/faces-page/set-birth-date-modal.svelte';
   import UnMergeFaceSelector from '$lib/components/faces-page/unmerge-face-selector.svelte';
   import AddToAlbum from '$lib/components/photos-page/actions/add-to-album.svelte';
   import ArchiveAction from '$lib/components/photos-page/actions/archive-action.svelte';
   import ChangeDate from '$lib/components/photos-page/actions/change-date-action.svelte';
+  import ChangeDescription from '$lib/components/photos-page/actions/change-description-action.svelte';
   import ChangeLocation from '$lib/components/photos-page/actions/change-location-action.svelte';
   import CreateSharedLink from '$lib/components/photos-page/actions/create-shared-link.svelte';
   import DeleteAssets from '$lib/components/photos-page/actions/delete-assets.svelte';
   import DownloadAction from '$lib/components/photos-page/actions/download-action.svelte';
   import FavoriteAction from '$lib/components/photos-page/actions/favorite-action.svelte';
   import SelectAllAssets from '$lib/components/photos-page/actions/select-all-assets.svelte';
+  import SetVisibilityAction from '$lib/components/photos-page/actions/set-visibility-action.svelte';
+  import TagAction from '$lib/components/photos-page/actions/tag-action.svelte';
   import AssetGrid from '$lib/components/photos-page/asset-grid.svelte';
   import AssetSelectControlBar from '$lib/components/photos-page/asset-select-control-bar.svelte';
+  import ButtonContextMenu from '$lib/components/shared-components/context-menu/button-context-menu.svelte';
   import MenuOption from '$lib/components/shared-components/context-menu/menu-option.svelte';
   import ControlAppBar from '$lib/components/shared-components/control-app-bar.svelte';
   import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
@@ -27,21 +31,26 @@
     notificationController,
   } from '$lib/components/shared-components/notification/notification';
   import { AppRoute, PersonPageViewMode, QueryParameter, SessionStorageKey } from '$lib/constants';
+  import { TimelineManager } from '$lib/managers/timeline-manager/timeline-manager.svelte';
+  import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
+  import PersonEditBirthDateModal from '$lib/modals/PersonEditBirthDateModal.svelte';
+  import PersonMergeSuggestionModal from '$lib/modals/PersonMergeSuggestionModal.svelte';
+  import { AssetInteraction } from '$lib/stores/asset-interaction.svelte';
   import { assetViewingStore } from '$lib/stores/asset-viewing.store';
-  import { AssetStore } from '$lib/stores/assets.store';
+  import { locale } from '$lib/stores/preferences.store';
+  import { preferences } from '$lib/stores/user.store';
   import { websocketEvents } from '$lib/stores/websocket';
   import { getPeopleThumbnailUrl, handlePromiseError } from '$lib/utils';
-  import { clickOutside } from '$lib/actions/click-outside';
   import { handleError } from '$lib/utils/handle-error';
   import { isExternalUrl } from '$lib/utils/navigation';
   import {
+    AssetVisibility,
     getPersonStatistics,
-    mergePerson,
     searchPerson,
     updatePerson,
-    type AssetResponseDto,
     type PersonResponseDto,
   } from '@immich/sdk';
+  import { modalManager } from '@immich/ui';
   import {
     mdiAccountBoxOutline,
     mdiAccountMultipleCheckOutline,
@@ -50,16 +59,14 @@
     mdiDotsVertical,
     mdiEyeOffOutline,
     mdiEyeOutline,
+    mdiHeartMinusOutline,
+    mdiHeartOutline,
     mdiPlus,
   } from '@mdi/js';
+  import { DateTime } from 'luxon';
   import { onDestroy, onMount } from 'svelte';
-  import type { PageData } from './$types';
-  import { listNavigation } from '$lib/actions/list-navigation';
   import { t } from 'svelte-i18n';
-  import ButtonContextMenu from '$lib/components/shared-components/context-menu/button-context-menu.svelte';
-  import { preferences } from '$lib/stores/user.store';
-  import TagAction from '$lib/components/photos-page/actions/tag-action.svelte';
-  import { AssetInteraction } from '$lib/stores/asset-interaction.svelte';
+  import type { PageData } from './$types';
 
   interface Props {
     data: PageData;
@@ -70,18 +77,9 @@
   let numberOfAssets = $state(data.statistics.assets);
   let { isViewing: showAssetViewer } = assetViewingStore;
 
-  const assetStoreOptions = { isArchived: false, personId: data.person.id };
-  const assetStore = new AssetStore(assetStoreOptions);
-
-  $effect(() => {
-    // Check to trigger rebuild the timeline when navigating between people from the info panel
-    const change = assetStoreOptions.personId !== data.person.id;
-    assetStoreOptions.personId = data.person.id;
-    handlePromiseError(assetStore.updateOptions(assetStoreOptions));
-    if (change) {
-      assetStore.triggerUpdate();
-    }
-  });
+  const timelineManager = new TimelineManager();
+  $effect(() => void timelineManager.updateOptions({ visibility: AssetVisibility.Timeline, personId: data.person.id }));
+  onDestroy(() => timelineManager.destroy());
 
   const assetInteraction = new AssetInteraction();
 
@@ -92,6 +90,7 @@
   let personMerge1: PersonResponseDto | undefined = $state();
   let personMerge2: PersonResponseDto | undefined = $state();
   let potentialMergePeople: PersonResponseDto[] = $state([]);
+  let isSuggestionSelectedByUser = $state(false);
 
   let personName = '';
   let suggestedPeople: PersonResponseDto[] = $state([]);
@@ -124,7 +123,7 @@
   });
 
   const handleEscape = async () => {
-    if ($showAssetViewer || viewMode === PersonPageViewMode.SUGGEST_MERGE) {
+    if ($showAssetViewer) {
       return;
     }
     if (assetInteraction.selectionActive) {
@@ -153,7 +152,7 @@
   });
 
   const handleUnmerge = () => {
-    $assetStore.removeAssets(assetInteraction.selectedAssetsArray.map((a) => a.id));
+    timelineManager.removeAssets(assetInteraction.selectedAssets.map((a) => a.id));
     assetInteraction.clearMultiselect();
     viewMode = PersonPageViewMode.VIEW_ASSETS;
   };
@@ -180,6 +179,25 @@
     }
   };
 
+  const handleToggleFavorite = async () => {
+    try {
+      const updatedPerson = await updatePerson({
+        id: person.id,
+        personUpdateDto: { isFavorite: !person.isFavorite },
+      });
+
+      // Invalidate to reload the page data and have the favorite status updated
+      await invalidateAll();
+
+      notificationController.show({
+        message: updatedPerson.isFavorite ? $t('added_to_favorites') : $t('removed_from_favorites'),
+        type: NotificationType.Info,
+      });
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_add_remove_favorites', { values: { favorite: person.isFavorite } }));
+    }
+  };
+
   const handleMerge = async (person: PersonResponseDto) => {
     await updateAssetCount();
     await handleGoBack();
@@ -187,7 +205,7 @@
     data = { ...data, person };
   };
 
-  const handleSelectFeaturePhoto = async (asset: AssetResponseDto) => {
+  const handleSelectFeaturePhoto = async (asset: TimelineAsset) => {
     if (viewMode !== PersonPageViewMode.SELECT_PERSON) {
       return;
     }
@@ -203,45 +221,57 @@
     viewMode = PersonPageViewMode.VIEW_ASSETS;
   };
 
-  const handleMergeSamePerson = async (response: [PersonResponseDto, PersonResponseDto]) => {
-    const [personToMerge, personToBeMergedIn] = response;
-    viewMode = PersonPageViewMode.VIEW_ASSETS;
-    isEditingName = false;
-    try {
-      await mergePerson({
-        id: personToBeMergedIn.id,
-        mergePersonDto: { ids: [personToMerge.id] },
-      });
-      notificationController.show({
-        message: $t('merge_people_successfully'),
-        type: NotificationType.Info,
-      });
-      people = people.filter((person: PersonResponseDto) => person.id !== personToMerge.id);
-      if (personToBeMergedIn.name != personName && person.id === personToBeMergedIn.id) {
-        await updateAssetCount();
-        return;
-      }
-      await goto(`${AppRoute.PEOPLE}/${personToBeMergedIn.id}`, { replaceState: true });
-    } catch (error) {
-      handleError(error, $t('errors.unable_to_save_name'));
+  const handleMergeSuggestion = async (): Promise<{ merged: boolean }> => {
+    if (!personMerge1 || !personMerge2) {
+      return { merged: false };
     }
+
+    const result = await modalManager.show(PersonMergeSuggestionModal, {
+      personToMerge: personMerge1,
+      personToBeMergedInto: personMerge2,
+      potentialMergePeople,
+    });
+
+    if (!result) {
+      return { merged: false };
+    }
+
+    const [personToMerge, personToBeMergedInto] = result;
+
+    people = people.filter((person: PersonResponseDto) => person.id !== personToMerge.id);
+    if (personToBeMergedInto.name != personName && person.id === personToBeMergedInto.id) {
+      await updateAssetCount();
+      return { merged: true };
+    }
+    await goto(`${AppRoute.PEOPLE}/${personToBeMergedInto.id}`, { replaceState: true });
+    return { merged: true };
   };
 
-  const handleSuggestPeople = (person2: PersonResponseDto) => {
+  const handleSuggestPeople = async (person2: PersonResponseDto) => {
     isEditingName = false;
-    potentialMergePeople = [];
-    personName = person.name;
-    personMerge1 = person;
-    personMerge2 = person2;
-    viewMode = PersonPageViewMode.SUGGEST_MERGE;
+    if (person.id !== person2.id) {
+      potentialMergePeople = [];
+      personName = person.name;
+      personMerge1 = person;
+      personMerge2 = person2;
+      isSuggestionSelectedByUser = true;
+
+      await handleMergeSuggestion();
+    }
   };
 
   const changeName = async () => {
     viewMode = PersonPageViewMode.VIEW_ASSETS;
     person.name = personName;
-    try {
-      isEditingName = false;
+    isEditingName = false;
 
+    if (isSuggestionSelectedByUser) {
+      // User canceled the merge
+      isSuggestionSelectedByUser = false;
+      return;
+    }
+
+    try {
       person = await updatePerson({ id: person.id, personUpdateDto: { name: personName } });
 
       notificationController.show({
@@ -254,9 +284,6 @@
   };
 
   const handleCancelEditName = () => {
-    if (viewMode === PersonPageViewMode.SUGGEST_MERGE) {
-      return;
-    }
     isSearchingPeople = false;
     isEditingName = false;
   };
@@ -291,33 +318,28 @@
             !person.isHidden,
         )
         .slice(0, 3);
-      viewMode = PersonPageViewMode.SUGGEST_MERGE;
-      return;
+      const { merged } = await handleMergeSuggestion();
+      if (merged) {
+        return;
+      }
     }
     await changeName();
   };
 
-  const handleSetBirthDate = async (birthDate: string) => {
-    try {
-      viewMode = PersonPageViewMode.VIEW_ASSETS;
-      person.birthDate = birthDate;
+  const handleSetBirthDate = async () => {
+    const updatedPerson = await modalManager.show(PersonEditBirthDateModal, { person });
 
-      const updatedPerson = await updatePerson({
-        id: person.id,
-        personUpdateDto: { birthDate: birthDate.length > 0 ? birthDate : null },
-      });
-
-      people = people.map((person: PersonResponseDto) => {
-        if (person.id === updatedPerson.id) {
-          return updatedPerson;
-        }
-        return person;
-      });
-
-      notificationController.show({ message: $t('date_of_birth_saved'), type: NotificationType.Info });
-    } catch (error) {
-      handleError(error, $t('errors.unable_to_save_date_of_birth'));
+    if (!updatedPerson) {
+      return;
     }
+
+    person = updatedPerson;
+    people = people.map((person: PersonResponseDto) => {
+      if (person.id === updatedPerson.id) {
+        return updatedPerson;
+      }
+      return person;
+    });
   };
 
   const handleGoBack = async () => {
@@ -328,9 +350,16 @@
     }
   };
 
-  onDestroy(() => {
-    assetStore.destroy();
-  });
+  const handleDeleteAssets = async (assetIds: string[]) => {
+    timelineManager.removeAssets(assetIds);
+    await updateAssetCount();
+  };
+
+  const handleUndoDeleteAssets = async (assets: TimelineAsset[]) => {
+    timelineManager.addAssets(assets);
+    await updateAssetCount();
+  };
+
   let person = $derived(data.person);
 
   let thumbnailData = $derived(getPeopleThumbnailUrl(person));
@@ -340,115 +369,15 @@
       handlePromiseError(updateAssetCount());
     }
   });
+
+  const handleSetVisibility = (assetIds: string[]) => {
+    timelineManager.removeAssets(assetIds);
+    assetInteraction.clearMultiselect();
+  };
 </script>
 
-{#if viewMode === PersonPageViewMode.UNASSIGN_ASSETS}
-  <UnMergeFaceSelector
-    assetIds={assetInteraction.selectedAssetsArray.map((a) => a.id)}
-    personAssets={person}
-    onClose={() => (viewMode = PersonPageViewMode.VIEW_ASSETS)}
-    onConfirm={handleUnmerge}
-  />
-{/if}
-
-{#if viewMode === PersonPageViewMode.SUGGEST_MERGE && personMerge1 && personMerge2}
-  <MergeSuggestionModal
-    {personMerge1}
-    {personMerge2}
-    {potentialMergePeople}
-    onClose={() => (viewMode = PersonPageViewMode.VIEW_ASSETS)}
-    onReject={changeName}
-    onConfirm={handleMergeSamePerson}
-  />
-{/if}
-
-{#if viewMode === PersonPageViewMode.BIRTH_DATE}
-  <SetBirthDateModal
-    birthDate={person.birthDate ?? ''}
-    onClose={() => (viewMode = PersonPageViewMode.VIEW_ASSETS)}
-    onUpdate={handleSetBirthDate}
-  />
-{/if}
-
-{#if viewMode === PersonPageViewMode.MERGE_PEOPLE}
-  <MergeFaceSelector {person} onBack={handleGoBack} onMerge={handleMerge} />
-{/if}
-
-<header>
-  {#if assetInteraction.selectionActive}
-    <AssetSelectControlBar
-      assets={assetInteraction.selectedAssets}
-      clearSelect={() => assetInteraction.clearMultiselect()}
-    >
-      <CreateSharedLink />
-      <SelectAllAssets {assetStore} {assetInteraction} />
-      <ButtonContextMenu icon={mdiPlus} title={$t('add_to')}>
-        <AddToAlbum />
-        <AddToAlbum shared />
-      </ButtonContextMenu>
-      <FavoriteAction removeFavorite={assetInteraction.isAllFavorite} onFavorite={() => assetStore.triggerUpdate()} />
-      <ButtonContextMenu icon={mdiDotsVertical} title={$t('add')}>
-        <DownloadAction menuItem filename="{person.name || 'immich'}.zip" />
-        <MenuOption
-          icon={mdiAccountMultipleCheckOutline}
-          text={$t('fix_incorrect_match')}
-          onClick={handleReassignAssets}
-        />
-        <ChangeDate menuItem />
-        <ChangeLocation menuItem />
-        <ArchiveAction
-          menuItem
-          unarchive={assetInteraction.isAllArchived}
-          onArchive={(assetIds) => $assetStore.removeAssets(assetIds)}
-        />
-        {#if $preferences.tags.enabled && assetInteraction.isAllUserOwned}
-          <TagAction menuItem />
-        {/if}
-        <DeleteAssets menuItem onAssetDelete={(assetIds) => $assetStore.removeAssets(assetIds)} />
-      </ButtonContextMenu>
-    </AssetSelectControlBar>
-  {:else}
-    {#if viewMode === PersonPageViewMode.VIEW_ASSETS || viewMode === PersonPageViewMode.SUGGEST_MERGE || viewMode === PersonPageViewMode.BIRTH_DATE}
-      <ControlAppBar showBackButton backIcon={mdiArrowLeft} onClose={() => goto(previousRoute)}>
-        {#snippet trailing()}
-          <ButtonContextMenu icon={mdiDotsVertical} title={$t('menu')}>
-            <MenuOption
-              text={$t('select_featured_photo')}
-              icon={mdiAccountBoxOutline}
-              onClick={() => (viewMode = PersonPageViewMode.SELECT_PERSON)}
-            />
-            <MenuOption
-              text={person.isHidden ? $t('unhide_person') : $t('hide_person')}
-              icon={person.isHidden ? mdiEyeOutline : mdiEyeOffOutline}
-              onClick={() => toggleHidePerson()}
-            />
-            <MenuOption
-              text={$t('set_date_of_birth')}
-              icon={mdiCalendarEditOutline}
-              onClick={() => (viewMode = PersonPageViewMode.BIRTH_DATE)}
-            />
-            <MenuOption
-              text={$t('merge_people')}
-              icon={mdiAccountMultipleCheckOutline}
-              onClick={() => (viewMode = PersonPageViewMode.MERGE_PEOPLE)}
-            />
-          </ButtonContextMenu>
-        {/snippet}
-      </ControlAppBar>
-    {/if}
-
-    {#if viewMode === PersonPageViewMode.SELECT_PERSON}
-      <ControlAppBar onClose={() => (viewMode = PersonPageViewMode.VIEW_ASSETS)}>
-        {#snippet leading()}
-          {$t('select_featured_photo')}
-        {/snippet}
-      </ControlAppBar>
-    {/if}
-  {/if}
-</header>
-
 <main
-  class="relative h-screen overflow-hidden bg-immich-bg tall:ml-4 pt-[var(--navbar-height)] dark:bg-immich-dark-bg"
+  class="relative z-0 h-dvh overflow-hidden px-2 md:px-6 md:pt-(--navbar-height-md) pt-(--navbar-height)"
   use:scrollMemoryClearer={{
     routeStartsWith: AppRoute.PEOPLE,
     beforeClear: () => {
@@ -460,17 +389,17 @@
     <AssetGrid
       enableRouting={true}
       {person}
-      {assetStore}
+      {timelineManager}
       {assetInteraction}
       isSelectionMode={viewMode === PersonPageViewMode.SELECT_PERSON}
       singleSelect={viewMode === PersonPageViewMode.SELECT_PERSON}
       onSelect={handleSelectFeaturePhoto}
       onEscape={handleEscape}
     >
-      {#if viewMode === PersonPageViewMode.VIEW_ASSETS || viewMode === PersonPageViewMode.SUGGEST_MERGE || viewMode === PersonPageViewMode.BIRTH_DATE}
+      {#if viewMode === PersonPageViewMode.VIEW_ASSETS}
         <!-- Person information block -->
         <div
-          class="relative w-fit p-4 sm:px-6"
+          class="relative w-fit p-4 sm:px-6 pt-12"
           use:clickOutside={{
             onOutclick: handleCancelEditName,
             onEscape: handleCancelEditName,
@@ -504,19 +433,35 @@
                     heightStyle="3.375rem"
                   />
                   <div
-                    class="flex flex-col justify-center text-left px-4 h-14 text-immich-primary dark:text-immich-dark-primary"
+                    class="flex flex-col justify-center text-start px-4 text-immich-primary dark:text-immich-dark-primary"
                   >
                     <p class="w-40 sm:w-72 font-medium truncate">{person.name || $t('add_a_name')}</p>
-                    <p class="absolute w-fit text-sm text-gray-500 dark:text-immich-gray bottom-0">
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
                       {$t('assets_count', { values: { count: numberOfAssets } })}
                     </p>
+                    {#if person.birthDate}
+                      <p class="text-sm text-gray-500 dark:text-gray-400">
+                        {$t('person_birthdate', {
+                          values: {
+                            date: DateTime.fromISO(person.birthDate).toLocaleString(
+                              {
+                                month: 'numeric',
+                                day: 'numeric',
+                                year: 'numeric',
+                              },
+                              { locale: $locale },
+                            ),
+                          },
+                        })}
+                      </p>
+                    {/if}
                   </div>
                 </button>
               </div>
             {/if}
           </section>
           {#if isEditingName}
-            <div class="absolute z-[999] w-64 sm:w-96">
+            <div class="absolute w-64 sm:w-96 z-1">
               {#if isSearchingPeople}
                 <div
                   class="flex border h-14 rounded-b-lg border-gray-400 dark:border-immich-dark-gray place-items-center bg-gray-200 p-2 dark:bg-gray-700"
@@ -544,7 +489,7 @@
                         widthStyle="2rem"
                         heightStyle="2rem"
                       />
-                      <p class="ml-4 text-gray-700 dark:text-gray-100">{person.name}</p>
+                      <p class="ms-4 text-gray-700 dark:text-gray-100">{person.name}</p>
                     </button>
                   {/each}
                 </div>
@@ -556,3 +501,103 @@
     </AssetGrid>
   {/key}
 </main>
+
+<header>
+  {#if assetInteraction.selectionActive}
+    <AssetSelectControlBar
+      assets={assetInteraction.selectedAssets}
+      clearSelect={() => assetInteraction.clearMultiselect()}
+    >
+      <CreateSharedLink />
+      <SelectAllAssets {timelineManager} {assetInteraction} />
+      <ButtonContextMenu icon={mdiPlus} title={$t('add_to')}>
+        <AddToAlbum />
+        <AddToAlbum shared />
+      </ButtonContextMenu>
+      <FavoriteAction
+        removeFavorite={assetInteraction.isAllFavorite}
+        onFavorite={(ids, isFavorite) =>
+          timelineManager.updateAssetOperation(ids, (asset) => {
+            asset.isFavorite = isFavorite;
+            return { remove: false };
+          })}
+      />
+      <ButtonContextMenu icon={mdiDotsVertical} title={$t('menu')}>
+        <DownloadAction menuItem filename="{person.name || 'immich'}.zip" />
+        <MenuOption
+          icon={mdiAccountMultipleCheckOutline}
+          text={$t('fix_incorrect_match')}
+          onClick={handleReassignAssets}
+        />
+        <ChangeDate menuItem />
+        <ChangeDescription menuItem />
+        <ChangeLocation menuItem />
+        <ArchiveAction
+          menuItem
+          unarchive={assetInteraction.isAllArchived}
+          onArchive={(assetIds) => timelineManager.removeAssets(assetIds)}
+        />
+        {#if $preferences.tags.enabled && assetInteraction.isAllUserOwned}
+          <TagAction menuItem />
+        {/if}
+        <SetVisibilityAction menuItem onVisibilitySet={handleSetVisibility} />
+        <DeleteAssets
+          menuItem
+          onAssetDelete={(assetIds) => handleDeleteAssets(assetIds)}
+          onUndoDelete={(assets) => handleUndoDeleteAssets(assets)}
+        />
+      </ButtonContextMenu>
+    </AssetSelectControlBar>
+  {:else}
+    {#if viewMode === PersonPageViewMode.VIEW_ASSETS}
+      <ControlAppBar showBackButton backIcon={mdiArrowLeft} onClose={() => goto(previousRoute)}>
+        {#snippet trailing()}
+          <ButtonContextMenu icon={mdiDotsVertical} title={$t('menu')}>
+            <MenuOption
+              text={$t('select_featured_photo')}
+              icon={mdiAccountBoxOutline}
+              onClick={() => (viewMode = PersonPageViewMode.SELECT_PERSON)}
+            />
+            <MenuOption
+              text={person.isHidden ? $t('unhide_person') : $t('hide_person')}
+              icon={person.isHidden ? mdiEyeOutline : mdiEyeOffOutline}
+              onClick={() => toggleHidePerson()}
+            />
+            <MenuOption text={$t('set_date_of_birth')} icon={mdiCalendarEditOutline} onClick={handleSetBirthDate} />
+            <MenuOption
+              text={$t('merge_people')}
+              icon={mdiAccountMultipleCheckOutline}
+              onClick={() => (viewMode = PersonPageViewMode.MERGE_PEOPLE)}
+            />
+            <MenuOption
+              icon={person.isFavorite ? mdiHeartMinusOutline : mdiHeartOutline}
+              text={person.isFavorite ? $t('unfavorite') : $t('to_favorite')}
+              onClick={handleToggleFavorite}
+            />
+          </ButtonContextMenu>
+        {/snippet}
+      </ControlAppBar>
+    {/if}
+
+    {#if viewMode === PersonPageViewMode.SELECT_PERSON}
+      <ControlAppBar onClose={() => (viewMode = PersonPageViewMode.VIEW_ASSETS)}>
+        {#snippet leading()}
+          {$t('select_featured_photo')}
+        {/snippet}
+      </ControlAppBar>
+    {/if}
+  {/if}
+</header>
+
+{#if viewMode === PersonPageViewMode.UNASSIGN_ASSETS}
+  <UnMergeFaceSelector
+    assetIds={assetInteraction.selectedAssets.map((a) => a.id)}
+    personAssets={person}
+    onClose={() => (viewMode = PersonPageViewMode.VIEW_ASSETS)}
+    onConfirm={handleUnmerge}
+  />
+{/if}
+
+{#if viewMode === PersonPageViewMode.MERGE_PEOPLE}
+  <MergeFaceSelector {person} onBack={handleGoBack} onMerge={handleMerge} />
+{/if}

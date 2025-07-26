@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { Insertable, Kysely, NotNull, sql } from 'kysely';
+import { jsonObjectFrom } from 'kysely/helpers/postgres';
+import { InjectKysely } from 'nestjs-kysely';
+import { columns } from 'src/database';
 import { DummyValue, GenerateSql } from 'src/decorators';
-import { ActivityEntity } from 'src/entities/activity.entity';
-import { IActivityRepository } from 'src/interfaces/activity.interface';
-import { IsNull, Repository } from 'typeorm';
+import { AssetVisibility } from 'src/enum';
+import { DB } from 'src/schema';
+import { ActivityTable } from 'src/schema/tables/activity.table';
+import { asUuid } from 'src/utils/database';
 
 export interface ActivitySearch {
   albumId?: string;
@@ -13,72 +17,85 @@ export interface ActivitySearch {
 }
 
 @Injectable()
-export class ActivityRepository implements IActivityRepository {
-  constructor(@InjectRepository(ActivityEntity) private repository: Repository<ActivityEntity>) {}
+export class ActivityRepository {
+  constructor(@InjectKysely() private db: Kysely<DB>) {}
 
   @GenerateSql({ params: [{ albumId: DummyValue.UUID }] })
-  search(options: ActivitySearch): Promise<ActivityEntity[]> {
+  search(options: ActivitySearch) {
     const { userId, assetId, albumId, isLiked } = options;
-    return this.repository.find({
-      where: {
-        userId,
-        assetId: assetId === null ? IsNull() : assetId,
-        albumId,
-        isLiked,
-        asset: {
-          deletedAt: IsNull(),
-        },
-        user: {
-          deletedAt: IsNull(),
-        },
-      },
-      relations: {
-        user: true,
-      },
-      order: {
-        createdAt: 'ASC',
-      },
-    });
+
+    return this.db
+      .selectFrom('activity')
+      .selectAll('activity')
+      .innerJoin('user as user2', (join) =>
+        join.onRef('user2.id', '=', 'activity.userId').on('user2.deletedAt', 'is', null),
+      )
+      .innerJoinLateral(
+        (eb) =>
+          eb
+            .selectFrom(sql`(select 1)`.as('dummy'))
+            .select(columns.userWithPrefix)
+            .as('user'),
+        (join) => join.onTrue(),
+      )
+      .select((eb) => eb.fn.toJson('user').as('user'))
+      .leftJoin('asset', 'asset.id', 'activity.assetId')
+      .$if(!!userId, (qb) => qb.where('activity.userId', '=', userId!))
+      .$if(assetId === null, (qb) => qb.where('assetId', 'is', null))
+      .$if(!!assetId, (qb) => qb.where('activity.assetId', '=', assetId!))
+      .$if(!!albumId, (qb) => qb.where('activity.albumId', '=', albumId!))
+      .$if(isLiked !== undefined, (qb) => qb.where('activity.isLiked', '=', isLiked!))
+      .where('asset.deletedAt', 'is', null)
+      .orderBy('activity.createdAt', 'asc')
+      .execute();
   }
 
-  create(entity: Partial<ActivityEntity>): Promise<ActivityEntity> {
-    return this.save(entity);
+  @GenerateSql({ params: [{ albumId: DummyValue.UUID, userId: DummyValue.UUID }] })
+  async create(activity: Insertable<ActivityTable>) {
+    return this.db
+      .insertInto('activity')
+      .values(activity)
+      .returningAll()
+      .returning((eb) =>
+        jsonObjectFrom(eb.selectFrom('user').whereRef('user.id', '=', 'activity.userId').select(columns.user)).as(
+          'user',
+        ),
+      )
+      .$narrowType<{ user: NotNull }>()
+      .executeTakeFirstOrThrow();
   }
 
-  async delete(id: string): Promise<void> {
-    await this.repository.delete(id);
+  @GenerateSql({ params: [DummyValue.UUID] })
+  async delete(id: string) {
+    await this.db.deleteFrom('activity').where('id', '=', asUuid(id)).execute();
   }
 
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID] })
-  getStatistics(assetId: string, albumId: string): Promise<number> {
-    return this.repository.count({
-      where: {
-        assetId,
-        albumId,
-        isLiked: false,
-        asset: {
-          deletedAt: IsNull(),
-        },
-        user: {
-          deletedAt: IsNull(),
-        },
-      },
-      relations: {
-        user: true,
-      },
-      withDeleted: true,
-    });
-  }
+  @GenerateSql({ params: [{ albumId: DummyValue.UUID, assetId: DummyValue.UUID }] })
+  async getStatistics({
+    albumId,
+    assetId,
+  }: {
+    albumId: string;
+    assetId?: string;
+  }): Promise<{ comments: number; likes: number }> {
+    const result = await this.db
+      .selectFrom('activity')
+      .select((eb) => [
+        eb.fn.countAll<number>().filterWhere('activity.isLiked', '=', false).as('comments'),
+        eb.fn.countAll<number>().filterWhere('activity.isLiked', '=', true).as('likes'),
+      ])
+      .innerJoin('user', (join) => join.onRef('user.id', '=', 'activity.userId').on('user.deletedAt', 'is', null))
+      .leftJoin('asset', 'asset.id', 'activity.assetId')
+      .$if(!!assetId, (qb) => qb.where('activity.assetId', '=', assetId!))
+      .where('activity.albumId', '=', albumId)
+      .where(({ or, and, eb }) =>
+        or([
+          and([eb('asset.deletedAt', 'is', null), eb('asset.visibility', '!=', sql.lit(AssetVisibility.Locked))]),
+          eb('asset.id', 'is', null),
+        ]),
+      )
+      .executeTakeFirstOrThrow();
 
-  private async save(entity: Partial<ActivityEntity>) {
-    const { id } = await this.repository.save(entity);
-    return this.repository.findOneOrFail({
-      where: {
-        id,
-      },
-      relations: {
-        user: true,
-      },
-    });
+    return result;
   }
 }

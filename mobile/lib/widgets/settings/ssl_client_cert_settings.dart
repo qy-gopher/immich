@@ -8,6 +8,7 @@ import 'package:immich_mobile/entities/store.entity.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/theme_extensions.dart';
 import 'package:immich_mobile/utils/http_ssl_cert_override.dart';
+import 'package:immich_mobile/utils/http_ssl_options.dart';
 
 class SslClientCertSettings extends StatefulWidget {
   const SslClientCertSettings({super.key, required this.isLoggedIn});
@@ -19,8 +20,7 @@ class SslClientCertSettings extends StatefulWidget {
 }
 
 class _SslClientCertSettingsState extends State<SslClientCertSettings> {
-  _SslClientCertSettingsState()
-      : isCertExist = SSLClientCertStoreVal.load() != null;
+  _SslClientCertSettingsState() : isCertExist = SSLClientCertStoreVal.load() != null;
 
   bool isCertExist;
 
@@ -61,10 +61,8 @@ class _SslClientCertSettingsState extends State<SslClientCertSettings> {
                 width: 15,
               ),
               ElevatedButton(
-                onPressed: widget.isLoggedIn || !isCertExist
-                    ? null
-                    : () => removeCert(context),
-                child: Text("client_cert_remove".tr()),
+                onPressed: widget.isLoggedIn || !isCertExist ? null : () async => await removeCert(context),
+                child: Text("remove".tr()),
               ),
             ],
           ),
@@ -88,7 +86,11 @@ class _SslClientCertSettingsState extends State<SslClientCertSettings> {
     );
   }
 
-  void storeCert(BuildContext context, Uint8List data, String? password) {
+  Future<void> storeCert(
+    BuildContext context,
+    Uint8List data,
+    String? password,
+  ) async {
     if (password != null && password.isEmpty) {
       password = null;
     }
@@ -102,8 +104,8 @@ class _SslClientCertSettingsState extends State<SslClientCertSettings> {
       showMessage(context, "client_cert_invalid_msg".tr());
       return;
     }
-    cert.save();
-    HttpOverrides.global = HttpSSLCertOverride();
+    await cert.save();
+    HttpSSLOptions.apply();
     setState(
       () => isCertExist = true,
     );
@@ -126,8 +128,7 @@ class _SslClientCertSettingsState extends State<SslClientCertSettings> {
         ),
         actions: [
           TextButton(
-            onPressed: () =>
-                {ctx.pop(), storeCert(context, data, password.text)},
+            onPressed: () async => {ctx.pop(), await storeCert(context, data, password.text)},
             child: Text("client_cert_dialog_msg_confirm".tr()),
           ),
         ],
@@ -150,9 +151,9 @@ class _SslClientCertSettingsState extends State<SslClientCertSettings> {
     }
   }
 
-  void removeCert(BuildContext context) {
-    SSLClientCertStoreVal.delete();
-    HttpOverrides.global = HttpSSLCertOverride();
+  Future<void> removeCert(BuildContext context) async {
+    await SSLClientCertStoreVal.delete();
+    HttpSSLOptions.apply();
     setState(
       () => isCertExist = false,
     );

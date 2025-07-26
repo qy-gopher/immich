@@ -24,7 +24,7 @@ class MapLocationPickerPage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedLatLng = useValueNotifier<LatLng>(initialLatLng);
-    final controller = useRef<MaplibreMapController?>(null);
+    final controller = useRef<MapLibreMapController?>(null);
     final marker = useRef<Symbol?>(null);
 
     Future<void> onStyleLoaded() async {
@@ -35,8 +35,7 @@ class MapLocationPickerPage extends HookConsumerWidget {
       selectedLatLng.value = centre;
       controller.value?.animateCamera(CameraUpdate.newLatLng(centre));
       if (marker.value != null) {
-        await controller.value
-            ?.updateSymbol(marker.value!, SymbolOptions(geometry: centre));
+        await controller.value?.updateSymbol(marker.value!, SymbolOptions(geometry: centre));
       }
     }
 
@@ -45,15 +44,13 @@ class MapLocationPickerPage extends HookConsumerWidget {
     }
 
     Future<void> getCurrentLocation() async {
-      var (currentLocation, _) =
-          await MapUtils.checkPermAndGetLocation(context);
+      var (currentLocation, _) = await MapUtils.checkPermAndGetLocation(context: context);
 
       if (currentLocation == null) {
         return;
       }
 
-      var currentLatLng =
-          LatLng(currentLocation.latitude, currentLocation.longitude);
+      var currentLatLng = LatLng(currentLocation.latitude, currentLocation.longitude);
       selectedLatLng.value = currentLatLng;
       controller.value?.animateCamera(CameraUpdate.newLatLng(currentLatLng));
     }
@@ -74,12 +71,10 @@ class MapLocationPickerPage extends HookConsumerWidget {
                   bottomRight: Radius.circular(40),
                 ),
               ),
-              child: MaplibreMap(
-                initialCameraPosition:
-                    CameraPosition(target: initialLatLng, zoom: 12),
+              child: MapLibreMap(
+                initialCameraPosition: CameraPosition(target: initialLatLng, zoom: 12),
                 styleString: style,
-                onMapCreated: (mapController) =>
-                    controller.value = mapController,
+                onMapCreated: (mapController) => controller.value = mapController,
                 onStyleLoadedCallback: onStyleLoaded,
                 onMapClick: onMapClick,
                 dragEnabled: false,
@@ -165,8 +160,7 @@ class _BottomBar extends StatelessWidget {
               children: [
                 ElevatedButton(
                   onPressed: onUseLocation,
-                  child:
-                      const Text("map_location_picker_page_use_location").tr(),
+                  child: const Text("map_location_picker_page_use_location").tr(),
                 ),
                 ElevatedButton(
                   onPressed: onGetCurrentLocation,

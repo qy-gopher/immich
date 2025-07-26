@@ -25,7 +25,7 @@ test.describe('Registration', () => {
 
     // login
     await expect(page).toHaveTitle(/Login/);
-    await page.goto('/auth/login');
+    await page.goto('/auth/login?autoLaunch=0');
     await page.getByLabel('Email').fill('admin@immich.app');
     await page.getByLabel('Password').fill('password');
     await page.getByRole('button', { name: 'Login' }).click();
@@ -33,7 +33,9 @@ test.describe('Registration', () => {
     // onboarding
     await expect(page).toHaveURL('/auth/onboarding');
     await page.getByRole('button', { name: 'Theme' }).click();
-    await page.getByRole('button', { name: 'Privacy' }).click();
+    await page.getByRole('button', { name: 'Language' }).click();
+    await page.getByRole('button', { name: 'Server Privacy' }).click();
+    await page.getByRole('button', { name: 'User Privacy' }).click();
     await page.getByRole('button', { name: 'Storage Template' }).click();
     await page.getByRole('button', { name: 'Done' }).click();
 
@@ -59,7 +61,7 @@ test.describe('Registration', () => {
     await context.clearCookies();
 
     // login
-    await page.goto('/auth/login');
+    await page.goto('/auth/login?autoLaunch=0');
     await page.getByLabel('Email').fill('user@immich.cloud');
     await page.getByLabel('Password').fill('password');
     await page.getByRole('button', { name: 'Login' }).click();
@@ -72,10 +74,17 @@ test.describe('Registration', () => {
     await page.getByRole('button', { name: 'Change password' }).click();
 
     // login with new password
-    await expect(page).toHaveURL('/auth/login');
+    await expect(page).toHaveURL('/auth/login?autoLaunch=0');
     await page.getByLabel('Email').fill('user@immich.cloud');
     await page.getByLabel('Password').fill('new-password');
     await page.getByRole('button', { name: 'Login' }).click();
+
+    // onboarding
+    await expect(page).toHaveURL('/auth/onboarding');
+    await page.getByRole('button', { name: 'Theme' }).click();
+    await page.getByRole('button', { name: 'Language' }).click();
+    await page.getByRole('button', { name: 'User Privacy' }).click();
+    await page.getByRole('button', { name: 'Done' }).click();
 
     // success
     await expect(page).toHaveURL(/\/photos/);

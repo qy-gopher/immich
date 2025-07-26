@@ -89,13 +89,13 @@ describe('/shared-links', () => {
     await deleteUserAdmin({ id: user2.userId, userAdminDeleteDto: {} }, { headers: asBearerAuth(admin.accessToken) });
   });
 
-  describe('GET /share/${key}', () => {
+  describe('GET /share/:key', () => {
     it('should have correct asset count in meta tag for non-empty album', async () => {
       const resp = await request(shareUrl).get(`/${linkWithMetadata.key}`);
       expect(resp.status).toBe(200);
       expect(resp.header['content-type']).toContain('text/html');
       expect(resp.text).toContain(
-        `<meta name="description" content="${metadataAlbum.assets.length} shared photos & videos" />`,
+        `<meta name="description" content="${metadataAlbum.assets.length} shared photos &amp; videos" />`,
       );
     });
 
@@ -103,21 +103,38 @@ describe('/shared-links', () => {
       const resp = await request(shareUrl).get(`/${linkWithAlbum.key}`);
       expect(resp.status).toBe(200);
       expect(resp.header['content-type']).toContain('text/html');
-      expect(resp.text).toContain(`<meta name="description" content="0 shared photos & videos" />`);
+      expect(resp.text).toContain(`<meta name="description" content="0 shared photos &amp; videos" />`);
     });
 
     it('should have correct asset count in meta tag for shared asset', async () => {
       const resp = await request(shareUrl).get(`/${linkWithAssets.key}`);
       expect(resp.status).toBe(200);
       expect(resp.header['content-type']).toContain('text/html');
-      expect(resp.text).toContain(`<meta name="description" content="1 shared photos & videos" />`);
+      expect(resp.text).toContain(`<meta name="description" content="1 shared photos &amp; videos" />`);
     });
 
     it('should have fqdn og:image meta tag for shared asset', async () => {
       const resp = await request(shareUrl).get(`/${linkWithAssets.key}`);
       expect(resp.status).toBe(200);
       expect(resp.header['content-type']).toContain('text/html');
-      expect(resp.text).toContain(`<meta property="og:image" content="http://`);
+      expect(resp.text).toContain(`<meta property="og:image" content="http://127.0.0.1:2285`);
+    });
+
+    it('should fall back to my.immich.app og:image meta tag for shared asset if Host header is not present', async () => {
+      const resp = await request(shareUrl).get(`/${linkWithAssets.key}`).set('Host', '');
+      expect(resp.status).toBe(200);
+      expect(resp.header['content-type']).toContain('text/html');
+      expect(resp.text).toContain(`<meta property="og:image" content="https://my.immich.app`);
+    });
+
+    it('should return 404 for an invalid shared link', async () => {
+      const resp = await request(shareUrl).get(`/invalid-key`);
+      expect(resp.status).toBe(404);
+      expect(resp.header['content-type']).toContain('text/html');
+      expect(resp.text).not.toContain(`og:type`);
+      expect(resp.text).not.toContain(`og:title`);
+      expect(resp.text).not.toContain(`og:description`);
+      expect(resp.text).not.toContain(`og:image`);
     });
   });
 
@@ -139,12 +156,39 @@ describe('/shared-links', () => {
       expect(body).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ id: linkWithAlbum.id }),
-          expect.objectContaining({ id: linkWithAssets.id }),
+          expect.objectContaining({
+            id: linkWithAssets.id,
+            assets: expect.arrayContaining([expect.objectContaining({ id: asset1.id })]),
+          }),
           expect.objectContaining({ id: linkWithPassword.id }),
           expect.objectContaining({ id: linkWithMetadata.id }),
           expect.objectContaining({ id: linkWithoutMetadata.id }),
         ]),
       );
+    });
+
+    it('should filter on albumId', async () => {
+      const { status, body } = await request(app)
+        .get(`/shared-links?albumId=${album.id}`)
+        .set('Authorization', `Bearer ${user1.accessToken}`);
+
+      expect(status).toBe(200);
+      expect(body).toHaveLength(2);
+      expect(body).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: linkWithAlbum.id }),
+          expect.objectContaining({ id: linkWithPassword.id }),
+        ]),
+      );
+    });
+
+    it('should find 0 albums', async () => {
+      const { status, body } = await request(app)
+        .get(`/shared-links?albumId=${uuidDto.notFound}`)
+        .set('Authorization', `Bearer ${user1.accessToken}`);
+
+      expect(status).toBe(200);
+      expect(body).toHaveLength(0);
     });
 
     it('should not get shared links created by other users', async () => {
@@ -170,7 +214,7 @@ describe('/shared-links', () => {
       expect(status).toBe(200);
       expect(body).toEqual(
         expect.objectContaining({
-          album,
+          album: expect.objectContaining({ id: album.id }),
           userId: user1.userId,
           type: SharedLinkType.Album,
         }),
@@ -208,7 +252,7 @@ describe('/shared-links', () => {
       expect(status).toBe(200);
       expect(body).toEqual(
         expect.objectContaining({
-          album,
+          album: expect.objectContaining({ id: album.id }),
           userId: user1.userId,
           type: SharedLinkType.Album,
         }),
@@ -219,15 +263,7 @@ describe('/shared-links', () => {
       const { status, body } = await request(app).get('/shared-links/me').query({ key: linkWithMetadata.key });
 
       expect(status).toBe(200);
-      expect(body.assets).toHaveLength(1);
-      expect(body.assets[0]).toEqual(
-        expect.objectContaining({
-          originalFileName: 'example.png',
-          localDateTime: expect.any(String),
-          fileCreatedAt: expect.any(String),
-          exifInfo: expect.any(Object),
-        }),
-      );
+      expect(body.assets).toHaveLength(0);
       expect(body.album).toBeDefined();
     });
 
@@ -262,7 +298,7 @@ describe('/shared-links', () => {
       expect(status).toBe(200);
       expect(body).toEqual(
         expect.objectContaining({
-          album,
+          album: expect.objectContaining({ id: album.id }),
           userId: user1.userId,
           type: SharedLinkType.Album,
         }),

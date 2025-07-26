@@ -2,9 +2,10 @@ import 'package:auto_route/auto_route.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:immich_mobile/entities/user.entity.dart';
+import 'package:immich_mobile/domain/models/user.model.dart';
 import 'package:immich_mobile/extensions/asyncvalue_extensions.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
+import 'package:immich_mobile/generated/intl_keys.g.dart';
 import 'package:immich_mobile/providers/album/album.provider.dart';
 import 'package:immich_mobile/providers/partner.provider.dart';
 import 'package:immich_mobile/providers/search/people.provider.dart';
@@ -24,8 +25,7 @@ class LibraryPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     context.locale;
-    final trashEnabled =
-        ref.watch(serverInfoProvider.select((v) => v.serverFeatures.trash));
+    final trashEnabled = ref.watch(serverInfoProvider.select((v) => v.serverFeatures.trash));
 
     return Scaffold(
       appBar: const ImmichAppBar(),
@@ -41,13 +41,13 @@ class LibraryPage extends ConsumerWidget {
                   ActionButton(
                     onPressed: () => context.pushRoute(const FavoritesRoute()),
                     icon: Icons.favorite_outline_rounded,
-                    label: 'favorites'.tr(),
+                    label: IntlKeys.favorites.tr(),
                   ),
                   const SizedBox(width: 8),
                   ActionButton(
                     onPressed: () => context.pushRoute(const ArchiveRoute()),
                     icon: Icons.archive_outlined,
-                    label: 'archived'.tr(),
+                    label: IntlKeys.archived.tr(),
                   ),
                 ],
               ),
@@ -58,14 +58,14 @@ class LibraryPage extends ConsumerWidget {
                 ActionButton(
                   onPressed: () => context.pushRoute(const SharedLinkRoute()),
                   icon: Icons.link_outlined,
-                  label: 'shared_links'.tr(),
+                  label: IntlKeys.shared_links.tr(),
                 ),
                 SizedBox(width: trashEnabled ? 8 : 0),
                 trashEnabled
                     ? ActionButton(
                         onPressed: () => context.pushRoute(const TrashRoute()),
                         icon: Icons.delete_outline_rounded,
-                        label: 'trash'.tr(),
+                        label: IntlKeys.trash.tr(),
                       )
                     : const SizedBox.shrink(),
               ],
@@ -104,7 +104,9 @@ class QuickAccessButtons extends ConsumerWidget {
           color: context.colorScheme.onSurface.withAlpha(10),
           width: 1,
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: const BorderRadius.all(
+          Radius.circular(20),
+        ),
         gradient: LinearGradient(
           colors: [
             context.colorScheme.primary.withAlpha(10),
@@ -129,11 +131,37 @@ class QuickAccessButtons extends ConsumerWidget {
               ),
             ),
             leading: const Icon(
+              Icons.folder_outlined,
+              size: 26,
+            ),
+            title: Text(
+              IntlKeys.folders.tr(),
+              style: context.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            onTap: () => context.pushRoute(FolderRoute()),
+          ),
+          ListTile(
+            leading: const Icon(
+              Icons.lock_outline_rounded,
+              size: 26,
+            ),
+            title: Text(
+              IntlKeys.locked_folder.tr(),
+              style: context.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            onTap: () => context.pushRoute(const LockedRoute()),
+          ),
+          ListTile(
+            leading: const Icon(
               Icons.group_outlined,
               size: 26,
             ),
             title: Text(
-              'partners'.tr(),
+              IntlKeys.partners.tr(),
               style: context.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w500,
               ),
@@ -150,7 +178,7 @@ class QuickAccessButtons extends ConsumerWidget {
 class PartnerList extends ConsumerWidget {
   const PartnerList({super.key, required this.partners});
 
-  final List<User> partners;
+  final List<UserDto> partners;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -213,7 +241,9 @@ class PeopleCollectionCard extends ConsumerWidget {
                 height: size,
                 width: size,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: const BorderRadius.all(
+                    Radius.circular(20),
+                  ),
                   gradient: LinearGradient(
                     colors: [
                       context.colorScheme.primary.withAlpha(30),
@@ -224,6 +254,9 @@ class PeopleCollectionCard extends ConsumerWidget {
                   ),
                 ),
                 child: people.widgetWhen(
+                  onLoading: () => const Center(
+                    child: CircularProgressIndicator(),
+                  ),
                   onData: (people) {
                     return GridView.count(
                       crossAxisCount: 2,
@@ -246,7 +279,7 @@ class PeopleCollectionCard extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Text(
-                  'people'.tr(),
+                  IntlKeys.people.tr(),
                   style: context.textTheme.titleSmall?.copyWith(
                     color: context.colorScheme.onSurface,
                     fontWeight: FontWeight.w500,
@@ -281,38 +314,40 @@ class LocalAlbumsCollectionCard extends HookConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
+              SizedBox(
                 height: size,
                 width: size,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  gradient: LinearGradient(
-                    colors: [
-                      context.colorScheme.primary.withAlpha(30),
-                      context.colorScheme.primary.withAlpha(25),
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: const BorderRadius.all(Radius.circular(20)),
+                    gradient: LinearGradient(
+                      colors: [
+                        context.colorScheme.primary.withAlpha(30),
+                        context.colorScheme.primary.withAlpha(25),
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
                   ),
-                ),
-                child: GridView.count(
-                  crossAxisCount: 2,
-                  padding: const EdgeInsets.all(12),
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: albums.take(4).map((album) {
-                    return AlbumThumbnailCard(
-                      album: album,
-                      showTitle: false,
-                    );
-                  }).toList(),
+                  child: GridView.count(
+                    crossAxisCount: 2,
+                    padding: const EdgeInsets.all(12),
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: albums.take(4).map((album) {
+                      return AlbumThumbnailCard(
+                        album: album,
+                        showTitle: false,
+                      );
+                    }).toList(),
+                  ),
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Text(
-                  'on_this_device'.tr(),
+                  IntlKeys.on_this_device.tr(),
                   style: context.textTheme.titleSmall?.copyWith(
                     color: context.colorScheme.onSurface,
                     fontWeight: FontWeight.w500,
@@ -338,34 +373,39 @@ class PlacesCollectionCard extends StatelessWidget {
         final size = context.width * widthFactor - 20.0;
 
         return GestureDetector(
-          onTap: () => context.pushRoute(const PlacesCollectionRoute()),
+          onTap: () => context.pushRoute(
+            PlacesCollectionRoute(
+              currentLocation: null,
+            ),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
+              SizedBox(
                 height: size,
                 width: size,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  color: context.colorScheme.secondaryContainer.withAlpha(100),
-                ),
-                child: IgnorePointer(
-                  child: MapThumbnail(
-                    zoom: 7,
-                    centre: const LatLng(
-                      32.5,
-                      118,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: const BorderRadius.all(Radius.circular(20)),
+                    color: context.colorScheme.secondaryContainer.withAlpha(100),
+                  ),
+                  child: IgnorePointer(
+                    child: MapThumbnail(
+                      zoom: 8,
+                      centre: const LatLng(
+                        32.5,
+                        118,
+                      ),
+                      showAttribution: false,
+                      themeMode: context.isDarkTheme ? ThemeMode.dark : ThemeMode.light,
                     ),
-                    showAttribution: false,
-                    themeMode:
-                        context.isDarkTheme ? ThemeMode.dark : ThemeMode.light,
                   ),
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Text(
-                  'places'.tr(),
+                  IntlKeys.places.tr(),
                   style: context.textTheme.titleSmall?.copyWith(
                     color: context.colorScheme.onSurface,
                     fontWeight: FontWeight.w500,

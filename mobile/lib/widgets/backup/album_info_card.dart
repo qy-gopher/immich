@@ -8,8 +8,8 @@ import 'package:immich_mobile/models/backup/available_album.model.dart';
 import 'package:immich_mobile/providers/album/album.provider.dart';
 import 'package:immich_mobile/providers/app_settings.provider.dart';
 import 'package:immich_mobile/providers/backup/backup.provider.dart';
-import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/providers/haptic_feedback.provider.dart';
+import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/services/app_settings.service.dart';
 import 'package:immich_mobile/widgets/common/immich_toast.dart';
 
@@ -23,13 +23,9 @@ class AlbumInfoCard extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final bool isSelected =
-        ref.watch(backupProvider).selectedBackupAlbums.contains(album);
-    final bool isExcluded =
-        ref.watch(backupProvider).excludedBackupAlbums.contains(album);
-    final syncAlbum = ref
-        .watch(appSettingsServiceProvider)
-        .getSetting(AppSettingsEnum.syncAlbums);
+    final bool isSelected = ref.watch(backupProvider).selectedBackupAlbums.contains(album);
+    final bool isExcluded = ref.watch(backupProvider).excludedBackupAlbums.contains(album);
+    final syncAlbum = ref.watch(appSettingsServiceProvider).getSetting(AppSettingsEnum.syncAlbums);
 
     final isDarkTheme = context.isDarkTheme;
 
@@ -37,16 +33,16 @@ class AlbumInfoCard extends HookConsumerWidget {
       context.primaryColor.withAlpha(100),
       BlendMode.darken,
     );
-    ColorFilter excludedFilter =
-        ColorFilter.mode(Colors.red.withAlpha(75), BlendMode.darken);
-    ColorFilter unselectedFilter =
-        const ColorFilter.mode(Colors.black, BlendMode.color);
+    ColorFilter excludedFilter = ColorFilter.mode(Colors.red.withAlpha(75), BlendMode.darken);
+    ColorFilter unselectedFilter = const ColorFilter.mode(Colors.black, BlendMode.color);
 
     buildSelectedTextBox() {
       if (isSelected) {
         return Chip(
           visualDensity: VisualDensity.compact,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(5)),
+          ),
           label: Text(
             "album_info_card_backup_album_included",
             style: TextStyle(
@@ -60,7 +56,9 @@ class AlbumInfoCard extends HookConsumerWidget {
       } else if (isExcluded) {
         return Chip(
           visualDensity: VisualDensity.compact,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(5)),
+          ),
           label: Text(
             "album_info_card_backup_album_excluded",
             style: TextStyle(
@@ -125,11 +123,11 @@ class AlbumInfoCard extends HookConsumerWidget {
         clipBehavior: Clip.hardEdge,
         margin: const EdgeInsets.all(1),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12), // if you need this
+          borderRadius: const BorderRadius.all(
+            Radius.circular(12), // if you need this
+          ),
           side: BorderSide(
-            color: isDarkTheme
-                ? const Color.fromARGB(255, 37, 35, 35)
-                : const Color(0xFFC9C9C9),
+            color: isDarkTheme ? const Color.fromARGB(255, 37, 35, 35) : const Color(0xFFC9C9C9),
             width: 1,
           ),
         ),
@@ -184,8 +182,7 @@ class AlbumInfoCard extends HookConsumerWidget {
                         Padding(
                           padding: const EdgeInsets.only(top: 2.0),
                           child: Text(
-                            album.assetCount.toString() +
-                                (album.isAll ? " (${'backup_all'.tr()})" : ""),
+                            album.assetCount.toString() + (album.isAll ? " (${'all'.tr()})" : ""),
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.grey[600],

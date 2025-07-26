@@ -29,31 +29,53 @@ export class OAuthController {
   }
 
   @Post('authorize')
-  startOAuth(@Body() dto: OAuthConfigDto): Promise<OAuthAuthorizeResponseDto> {
-    return this.service.authorize(dto);
+  async startOAuth(
+    @Body() dto: OAuthConfigDto,
+    @Res({ passthrough: true }) res: Response,
+    @GetLoginDetails() loginDetails: LoginDetails,
+  ): Promise<OAuthAuthorizeResponseDto> {
+    const { url, state, codeVerifier } = await this.service.authorize(dto);
+    return respondWithCookie(
+      res,
+      { url },
+      {
+        isSecure: loginDetails.isSecure,
+        values: [
+          { key: ImmichCookie.OAuthState, value: state },
+          { key: ImmichCookie.OAuthCodeVerifier, value: codeVerifier },
+        ],
+      },
+    );
   }
 
   @Post('callback')
   async finishOAuth(
+    @Req() request: Request,
     @Res({ passthrough: true }) res: Response,
     @Body() dto: OAuthCallbackDto,
     @GetLoginDetails() loginDetails: LoginDetails,
   ): Promise<LoginResponseDto> {
-    const body = await this.service.callback(dto, loginDetails);
+    const body = await this.service.callback(dto, request.headers, loginDetails);
+    res.clearCookie(ImmichCookie.OAuthState);
+    res.clearCookie(ImmichCookie.OAuthCodeVerifier);
     return respondWithCookie(res, body, {
       isSecure: loginDetails.isSecure,
       values: [
-        { key: ImmichCookie.ACCESS_TOKEN, value: body.accessToken },
-        { key: ImmichCookie.AUTH_TYPE, value: AuthType.OAUTH },
-        { key: ImmichCookie.IS_AUTHENTICATED, value: 'true' },
+        { key: ImmichCookie.AccessToken, value: body.accessToken },
+        { key: ImmichCookie.AuthType, value: AuthType.OAuth },
+        { key: ImmichCookie.IsAuthenticated, value: 'true' },
       ],
     });
   }
 
   @Post('link')
   @Authenticated()
-  linkOAuthAccount(@Auth() auth: AuthDto, @Body() dto: OAuthCallbackDto): Promise<UserAdminResponseDto> {
-    return this.service.link(auth, dto);
+  linkOAuthAccount(
+    @Req() request: Request,
+    @Auth() auth: AuthDto,
+    @Body() dto: OAuthCallbackDto,
+  ): Promise<UserAdminResponseDto> {
+    return this.service.link(auth, dto, request.headers);
   }
 
   @Post('unlink')

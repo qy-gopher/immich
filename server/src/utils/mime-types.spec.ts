@@ -22,6 +22,7 @@ describe('mimeTypes', () => {
     { mimetype: 'image/heif', extension: '.heif' },
     { mimetype: 'image/hif', extension: '.hif' },
     { mimetype: 'image/iiq', extension: '.iiq' },
+    { mimetype: 'image/jp2', extension: '.jp2' },
     { mimetype: 'image/jpeg', extension: '.jpe' },
     { mimetype: 'image/jpeg', extension: '.jpeg' },
     { mimetype: 'image/jpeg', extension: '.jpg' },
@@ -99,6 +100,20 @@ describe('mimeTypes', () => {
       expect({ ...mimeTypes.image, ...mimeTypes.video }[extension]).toContain(mimetype);
     });
   }
+
+  describe('toExtension', () => {
+    it('should get an extension for a png file', () => {
+      expect(mimeTypes.toExtension('image/png')).toEqual('.png');
+    });
+
+    it('should get an extension for a jpeg file', () => {
+      expect(mimeTypes.toExtension('image/jpeg')).toEqual('.jpg');
+    });
+
+    it('should get an extension from a webp file', () => {
+      expect(mimeTypes.toExtension('image/webp')).toEqual('.webp');
+    });
+  });
 
   describe('profile', () => {
     it('should contain only lowercase mime types', () => {

@@ -28,6 +28,7 @@
   <a href="README_nl_NL.md">Nederlands</a>
   <a href="README_tr_TR.md">Türkçe</a>
   <a href="README_zh_CN.md">中文</a>
+  <a href="README_uk_UA.md">Українська</a>
   <a href="README_ru_RU.md">Русский</a>
   <a href="README_pt_BR.md">Português Brasileiro</a>
   <a href="README_sv_SE.md">Svenska</a>
@@ -58,18 +59,12 @@ La documentazione ufficiale, inclusa la guida all'installazione, è disponibile 
 
 ## Demo
 
-Prova la demo del progetto https://demo.immich.app
-
-Sull'app mobile, imposta `https://demo.immich.app/api` come `Server Endpoint URL`
+Prova la demo del progetto https://demo.immich.app. Sull'app mobile, imposta `https://demo.immich.app` come `Server Endpoint URL`
 
 ```bash title="Demo Credential"
 Credenziali di accesso
 email: demo@immich.app
 password: demo
-```
-
-```
-Spec: Free-tier Oracle VM - Amsterdam - 2.4Ghz quad-core ARM64 CPU, 24GB RAM
 ```
 
 # Funzionalità

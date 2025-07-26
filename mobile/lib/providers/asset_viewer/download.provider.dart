@@ -23,7 +23,7 @@ class DownloadStateNotifier extends StateNotifier<DownloadState> {
     this._shareService,
     this._albumService,
   ) : super(
-          DownloadState(
+          const DownloadState(
             downloadStatus: TaskStatus.complete,
             showProgress: false,
             taskProgress: <String, DownloadInfo>{},
@@ -62,8 +62,7 @@ class DownloadStateNotifier extends StateNotifier<DownloadState> {
         if (update.task.metaData.isEmpty) {
           return;
         }
-        final livePhotosId =
-            LivePhotosMetadata.fromJson(update.task.metaData).id;
+        final livePhotosId = LivePhotosMetadata.fromJson(update.task.metaData).id;
         _downloadService.saveLivePhotos(update.task, livePhotosId);
         _onDownloadComplete(update.task.taskId);
         break;
@@ -104,7 +103,7 @@ class DownloadStateNotifier extends StateNotifier<DownloadState> {
   }
 
   void _taskProgressCallback(TaskProgressUpdate update) {
-    // Ignore if the task is cancled or completed
+    // Ignore if the task is canceled or completed
     if (update.progress == -2 || update.progress == -1) {
       return;
     }
@@ -140,7 +139,11 @@ class DownloadStateNotifier extends StateNotifier<DownloadState> {
     });
   }
 
-  void downloadAsset(Asset asset, BuildContext context) async {
+  Future<List<bool>> downloadAllAsset(List<Asset> assets) async {
+    return await _downloadService.downloadAll(assets);
+  }
+
+  void downloadAsset(Asset asset) async {
     await _downloadService.download(asset);
   }
 
@@ -182,12 +185,12 @@ class DownloadStateNotifier extends StateNotifier<DownloadState> {
         return const ShareDialog();
       },
       barrierDismissible: false,
+      useRootNavigator: false,
     );
   }
 }
 
-final downloadStateProvider =
-    StateNotifierProvider<DownloadStateNotifier, DownloadState>(
+final downloadStateProvider = StateNotifierProvider<DownloadStateNotifier, DownloadState>(
   ((ref) => DownloadStateNotifier(
         ref.watch(downloadServiceProvider),
         ref.watch(shareServiceProvider),

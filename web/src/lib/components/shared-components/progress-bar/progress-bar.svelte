@@ -51,7 +51,11 @@
 
   onMount(async () => {
     if (autoplay) {
+      status = ProgressBarStatus.Playing;
       await play();
+    } else {
+      status = ProgressBarStatus.Paused;
+      await progress.set(0);
     }
   });
 
@@ -67,16 +71,15 @@
     await progress.set($progress);
   };
 
-  export const restart = async (autoplay: boolean) => {
+  export const restart = async () => {
     await progress.set(0);
 
-    if (autoplay) {
+    if (status !== ProgressBarStatus.Paused) {
       await play();
     }
   };
 
-  export const reset = async () => {
-    status = ProgressBarStatus.Paused;
+  export const resetProgress = async () => {
     await progress.set(0);
   };
 
@@ -88,5 +91,5 @@
 </script>
 
 {#if !hidden}
-  <span class="absolute left-0 h-[3px] bg-immich-primary shadow-2xl" style:width={`${$progress * 100}%`}></span>
+  <span class="absolute start-0 h-[3px] bg-immich-primary shadow-2xl" style:width={`${$progress * 100}%`}></span>
 {/if}

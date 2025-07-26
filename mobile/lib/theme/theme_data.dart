@@ -24,9 +24,8 @@ ThemeData getThemeData({
     hintColor: colorScheme.onSurfaceSecondary,
     focusColor: colorScheme.primary,
     scaffoldBackgroundColor: colorScheme.surface,
-    splashColor: colorScheme.primary.withOpacity(0.1),
-    highlightColor: colorScheme.primary.withOpacity(0.1),
-    dialogBackgroundColor: colorScheme.surfaceContainer,
+    splashColor: colorScheme.primary.withValues(alpha: 0.1),
+    highlightColor: colorScheme.primary.withValues(alpha: 0.1),
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: colorScheme.surfaceContainer,
     ),
@@ -43,11 +42,10 @@ ThemeData getThemeData({
       titleTextStyle: TextStyle(
         color: colorScheme.primary,
         fontFamily: _getFontFamilyFromLocale(locale),
-        fontWeight: FontWeight.bold,
+        fontWeight: FontWeight.w600,
         fontSize: 18,
       ),
-      backgroundColor:
-          isDark ? colorScheme.surfaceContainer : colorScheme.surface,
+      backgroundColor: isDark ? colorScheme.surfaceContainer : colorScheme.surface,
       foregroundColor: colorScheme.primary,
       elevation: 0,
       scrolledUnderElevation: 0,
@@ -55,28 +53,28 @@ ThemeData getThemeData({
     ),
     textTheme: const TextTheme(
       displayLarge: TextStyle(
-        fontSize: 26,
-        fontWeight: FontWeight.bold,
+        fontSize: 18,
+        fontWeight: FontWeight.w600,
       ),
       displayMedium: TextStyle(
         fontSize: 14,
-        fontWeight: FontWeight.bold,
+        fontWeight: FontWeight.w600,
       ),
       displaySmall: TextStyle(
         fontSize: 12,
-        fontWeight: FontWeight.bold,
+        fontWeight: FontWeight.w600,
       ),
       titleSmall: TextStyle(
         fontSize: 16.0,
-        fontWeight: FontWeight.bold,
+        fontWeight: FontWeight.w600,
       ),
       titleMedium: TextStyle(
         fontSize: 18.0,
-        fontWeight: FontWeight.bold,
+        fontWeight: FontWeight.w600,
       ),
       titleLarge: TextStyle(
         fontSize: 26.0,
-        fontWeight: FontWeight.bold,
+        fontWeight: FontWeight.w600,
       ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
@@ -101,8 +99,7 @@ ThemeData getThemeData({
       ),
     ),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor:
-          isDark ? colorScheme.surfaceContainer : colorScheme.surface,
+      backgroundColor: isDark ? colorScheme.surfaceContainer : colorScheme.surface,
       labelTextStyle: const WidgetStatePropertyAll(
         TextStyle(
           fontSize: 14,
@@ -162,6 +159,14 @@ ThemeData getThemeData({
           fontWeight: FontWeight.normal,
         ),
       ),
+    ),
+    dialogTheme: DialogThemeData(backgroundColor: colorScheme.surfaceContainer),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(
+      // ignore: deprecated_member_use
+      year2023: false,
+      // TODO: Uncommented after upgrade to version later than 3.29.2
+      // circularTrackColor: Colors.black12,
+      trackGap: 3,
     ),
   );
 }

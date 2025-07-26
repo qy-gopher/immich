@@ -1,11 +1,13 @@
 import mockfs from 'mock-fs';
 import { readFileSync } from 'node:fs';
-import { CrawlOptions, crawl } from 'src/utils';
+import { Batcher, CrawlOptions, crawl } from 'src/utils';
+import { Mock } from 'vitest';
 
 interface Test {
   test: string;
   options: Omit<CrawlOptions, 'extensions'>;
   files: Record<string, boolean>;
+  skipOnWin32?: boolean;
 }
 
 const cwd = process.cwd();
@@ -47,6 +49,18 @@ const tests: Test[] = [
     files: {
       '/photos/image.jpg': true,
     },
+  },
+  {
+    test: 'should crawl folders with quotes',
+    options: {
+      pathsToCrawl: ["/photo's/", '/photo"s/', '/photo`s/'],
+    },
+    files: {
+      "/photo's/image1.jpg": true,
+      '/photo"s/image2.jpg': true,
+      '/photo`s/image3.jpg': true,
+    },
+    skipOnWin32: true, // single quote interferes with mockfs root on Windows
   },
   {
     test: 'should crawl a single file',
@@ -270,8 +284,12 @@ describe('crawl', () => {
   });
 
   describe('crawl', () => {
-    for (const { test, options, files } of tests) {
-      it(test, async () => {
+    for (const { test: name, options, files, skipOnWin32 } of tests) {
+      if (process.platform === 'win32' && skipOnWin32) {
+        test.skip(name);
+        continue;
+      }
+      it(name, async () => {
         // The file contents is the same as the path.
         mockfs(Object.fromEntries(Object.keys(files).map((file) => [file, file])));
 
@@ -284,5 +302,40 @@ describe('crawl', () => {
         expect(actual.map((path) => readContent(path)).sort()).toEqual(expected.sort());
       });
     }
+  });
+});
+
+describe('Batcher', () => {
+  let batcher: Batcher;
+  let onBatch: Mock;
+  beforeEach(() => {
+    onBatch = vi.fn();
+    batcher = new Batcher({ batchSize: 2, onBatch });
+  });
+
+  it('should trigger onBatch() when a batch limit is reached', async () => {
+    batcher.add('a');
+    batcher.add('b');
+    batcher.add('c');
+    expect(onBatch).toHaveBeenCalledOnce();
+    expect(onBatch).toHaveBeenCalledWith(['a', 'b']);
+  });
+
+  it('should trigger onBatch() when flush() is called', async () => {
+    batcher.add('a');
+    batcher.flush();
+    expect(onBatch).toHaveBeenCalledOnce();
+    expect(onBatch).toHaveBeenCalledWith(['a']);
+  });
+
+  it('should trigger onBatch() when debounce time reached', async () => {
+    vi.useFakeTimers();
+    batcher = new Batcher({ batchSize: 2, debounceTimeMs: 100, onBatch });
+    batcher.add('a');
+    expect(onBatch).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(200);
+    expect(onBatch).toHaveBeenCalledOnce();
+    expect(onBatch).toHaveBeenCalledWith(['a']);
+    vi.useRealTimers();
   });
 });

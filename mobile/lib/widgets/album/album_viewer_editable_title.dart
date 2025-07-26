@@ -16,7 +16,13 @@ class AlbumViewerEditableTitle extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final titleTextEditController = useTextEditingController(text: albumName);
+    final albumViewerState = ref.watch(albumViewerProvider);
+
+    final titleTextEditController = useTextEditingController(
+      text: albumViewerState.isEditAlbum && albumViewerState.editTitleText.isNotEmpty
+          ? albumViewerState.editTitleText
+          : albumName,
+    );
 
     void onFocusModeChange() {
       if (!titleFocusNode.hasFocus && titleTextEditController.text.isEmpty) {
@@ -45,7 +51,9 @@ class AlbumViewerEditableTitle extends HookConsumerWidget {
           }
         },
         focusNode: titleFocusNode,
-        style: context.textTheme.headlineMedium,
+        style: context.textTheme.headlineLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
         controller: titleTextEditController,
         onTap: () {
           context.focusScope.requestFocus(titleFocusNode);
@@ -58,8 +66,10 @@ class AlbumViewerEditableTitle extends HookConsumerWidget {
           }
         },
         decoration: InputDecoration(
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: 0,
+          ),
           suffixIcon: titleFocusNode.hasFocus
               ? IconButton(
                   onPressed: () {
@@ -81,7 +91,7 @@ class AlbumViewerEditableTitle extends HookConsumerWidget {
           focusColor: Colors.grey[300],
           fillColor: context.scaffoldBackgroundColor,
           filled: titleFocusNode.hasFocus,
-          hintText: 'share_add_title'.tr(),
+          hintText: 'add_a_title'.tr(),
           hintStyle: context.themeData.inputDecorationTheme.hintStyle?.copyWith(
             fontSize: 28,
           ),

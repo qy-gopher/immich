@@ -1,12 +1,29 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { exiftool } from 'exiftool-vendored';
 import { exec as execCallback } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import sharp from 'sharp';
-import { IConfigRepository } from 'src/interfaces/config.interface';
-import { ILoggerRepository } from 'src/interfaces/logger.interface';
-import { GitHubRelease, IServerInfoRepository, ServerBuildVersions } from 'src/interfaces/server-info.interface';
+import { ConfigRepository } from 'src/repositories/config.repository';
+import { LoggingRepository } from 'src/repositories/logging.repository';
+
+export interface GitHubRelease {
+  id: number;
+  url: string;
+  tag_name: string;
+  name: string;
+  created_at: string;
+  published_at: string;
+  body: string;
+}
+
+export interface ServerBuildVersions {
+  nodejs: string;
+  ffmpeg: string;
+  libvips: string;
+  exiftool: string;
+  imagemagick: string;
+}
 
 const exec = promisify(execCallback);
 const maybeFirstLine = async (command: string): Promise<string> => {
@@ -34,10 +51,10 @@ const getLockfileVersion = (name: string, lockfile?: BuildLockfile) => {
 };
 
 @Injectable()
-export class ServerInfoRepository implements IServerInfoRepository {
+export class ServerInfoRepository {
   constructor(
-    @Inject(IConfigRepository) private configRepository: IConfigRepository,
-    @Inject(ILoggerRepository) private logger: ILoggerRepository,
+    private configRepository: ConfigRepository,
+    private logger: LoggingRepository,
   ) {
     this.logger.setContext(ServerInfoRepository.name);
   }
@@ -56,26 +73,54 @@ export class ServerInfoRepository implements IServerInfoRepository {
     }
   }
 
+  buildVersions?: ServerBuildVersions;
+
+  private async retrieveVersionFallback(
+    command: string,
+    commandTransform?: (output: string) => string,
+    version?: string,
+  ): Promise<string> {
+    if (!version) {
+      const output = await maybeFirstLine(command);
+      version = commandTransform ? commandTransform(output) : output;
+    }
+    return version;
+  }
+
   async getBuildVersions(): Promise<ServerBuildVersions> {
-    const { nodeVersion, resourcePaths } = this.configRepository.getEnv();
+    if (!this.buildVersions) {
+      const { nodeVersion, resourcePaths } = this.configRepository.getEnv();
 
-    const [nodejsOutput, ffmpegOutput, magickOutput] = await Promise.all([
-      maybeFirstLine('node --version'),
-      maybeFirstLine('ffmpeg -version'),
-      maybeFirstLine('convert --version'),
-    ]);
+      const lockfile: BuildLockfile | undefined = await readFile(resourcePaths.lockFile)
+        .then((buffer) => JSON.parse(buffer.toString()))
+        .catch(() => this.logger.warn(`Failed to read ${resourcePaths.lockFile}`));
 
-    const lockfile = await readFile(resourcePaths.lockFile)
-      .then((buffer) => JSON.parse(buffer.toString()))
-      .catch(() => this.logger.warn(`Failed to read ${resourcePaths.lockFile}`));
+      const [nodejsVersion, ffmpegVersion, magickVersion, exiftoolVersion] = await Promise.all([
+        this.retrieveVersionFallback('node --version', undefined, nodeVersion),
+        this.retrieveVersionFallback(
+          'ffmpeg -version',
+          (output) => output.replaceAll('ffmpeg version ', ''),
+          getLockfileVersion('ffmpeg', lockfile),
+        ),
+        this.retrieveVersionFallback(
+          'magick --version',
+          (output) => output.replaceAll('Version: ImageMagick ', ''),
+          getLockfileVersion('imagemagick', lockfile),
+        ),
+        exiftool.version(),
+      ]);
 
-    return {
-      nodejs: nodejsOutput || nodeVersion || '',
-      exiftool: await exiftool.version(),
-      ffmpeg: getLockfileVersion('ffmpeg', lockfile) || ffmpegOutput.replaceAll('ffmpeg version', '') || '',
-      libvips: getLockfileVersion('libvips', lockfile) || sharp.versions.vips,
-      imagemagick:
-        getLockfileVersion('imagemagick', lockfile) || magickOutput.replaceAll('Version: ImageMagick ', '') || '',
-    };
+      const libvipsVersion = getLockfileVersion('libvips', lockfile) || sharp.versions.vips;
+
+      this.buildVersions = {
+        nodejs: nodejsVersion,
+        exiftool: exiftoolVersion,
+        ffmpeg: ffmpegVersion,
+        libvips: libvipsVersion,
+        imagemagick: magickVersion,
+      };
+    }
+
+    return this.buildVersions;
   }
 }

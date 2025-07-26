@@ -95,7 +95,7 @@ const config = {
             position: 'right',
           },
           {
-            to: '/docs/overview/introduction',
+            to: '/docs/overview/welcome',
             position: 'right',
             label: 'Docs',
           },
@@ -110,9 +110,9 @@ const config = {
             label: 'API',
           },
           {
-            to: '/blog',
+            href: 'https://immich.store',
             position: 'right',
-            label: 'Blog',
+            label: 'Merch',
           },
           {
             href: 'https://github.com/immich-app/immich',
@@ -124,6 +124,12 @@ const config = {
             label: 'Discord',
             position: 'right',
           },
+          {
+            type: 'html',
+            position: 'right',
+            value:
+              '<a href="https://buy.immich.app" target="_blank" class="no-underline hover:no-underline"><button class="buy-button bg-immich-primary dark:bg-immich-dark-primary text-white dark:text-black rounded-xl">Buy Immich</button></a>',
+          },
         ],
       },
       footer: {
@@ -134,7 +140,7 @@ const config = {
             items: [
               {
                 label: 'Welcome',
-                to: '/docs/overview/introduction',
+                to: '/docs/overview/welcome',
               },
               {
                 label: 'Installation',

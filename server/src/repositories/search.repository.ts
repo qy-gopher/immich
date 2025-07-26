@@ -1,65 +1,172 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { Injectable } from '@nestjs/common';
+import { Kysely, OrderByDirection, Selectable, sql } from 'kysely';
+import { InjectKysely } from 'nestjs-kysely';
 import { randomUUID } from 'node:crypto';
 import { DummyValue, GenerateSql } from 'src/decorators';
-import { AssetFaceEntity } from 'src/entities/asset-face.entity';
-import { AssetEntity } from 'src/entities/asset.entity';
-import { ExifEntity } from 'src/entities/exif.entity';
-import { GeodataPlacesEntity } from 'src/entities/geodata-places.entity';
-import { SmartSearchEntity } from 'src/entities/smart-search.entity';
-import { AssetType, PaginationMode } from 'src/enum';
-import { IConfigRepository } from 'src/interfaces/config.interface';
-import { DatabaseExtension, VectorExtension } from 'src/interfaces/database.interface';
-import { ILoggerRepository } from 'src/interfaces/logger.interface';
-import {
-  AssetDuplicateResult,
-  AssetDuplicateSearch,
-  AssetSearchOptions,
-  FaceEmbeddingSearch,
-  FaceSearchResult,
-  GetCameraMakesOptions,
-  GetCameraModelsOptions,
-  GetCitiesOptions,
-  GetStatesOptions,
-  ISearchRepository,
-  SearchPaginationOptions,
-  SmartSearchOptions,
-} from 'src/interfaces/search.interface';
-import { asVector, searchAssetBuilder } from 'src/utils/database';
-import { Paginated, PaginationResult, paginatedBuilder } from 'src/utils/pagination';
+import { MapAsset } from 'src/dtos/asset-response.dto';
+import { AssetStatus, AssetType, AssetVisibility, VectorIndex } from 'src/enum';
+import { probes } from 'src/repositories/database.repository';
+import { DB } from 'src/schema';
+import { AssetExifTable } from 'src/schema/tables/asset-exif.table';
+import { anyUuid, searchAssetBuilder } from 'src/utils/database';
+import { paginationHelper } from 'src/utils/pagination';
 import { isValidInteger } from 'src/validation';
-import { Repository } from 'typeorm';
+
+export interface SearchAssetIdOptions {
+  checksum?: Buffer;
+  deviceAssetId?: string;
+  id?: string;
+}
+
+export interface SearchUserIdOptions {
+  deviceId?: string;
+  libraryId?: string | null;
+  userIds?: string[];
+}
+
+export type SearchIdOptions = SearchAssetIdOptions & SearchUserIdOptions;
+
+export interface SearchStatusOptions {
+  isEncoded?: boolean;
+  isFavorite?: boolean;
+  isMotion?: boolean;
+  isOffline?: boolean;
+  isNotInAlbum?: boolean;
+  type?: AssetType;
+  status?: AssetStatus;
+  withArchived?: boolean;
+  withDeleted?: boolean;
+  visibility?: AssetVisibility;
+}
+
+export interface SearchOneToOneRelationOptions {
+  withExif?: boolean;
+  withStacked?: boolean;
+}
+
+export interface SearchRelationOptions extends SearchOneToOneRelationOptions {
+  withFaces?: boolean;
+  withPeople?: boolean;
+}
+
+export interface SearchDateOptions {
+  createdBefore?: Date;
+  createdAfter?: Date;
+  takenBefore?: Date;
+  takenAfter?: Date;
+  trashedBefore?: Date;
+  trashedAfter?: Date;
+  updatedBefore?: Date;
+  updatedAfter?: Date;
+}
+
+export interface SearchPathOptions {
+  encodedVideoPath?: string;
+  originalFileName?: string;
+  originalPath?: string;
+  previewPath?: string;
+  thumbnailPath?: string;
+}
+
+export interface SearchExifOptions {
+  city?: string | null;
+  country?: string | null;
+  lensModel?: string | null;
+  make?: string | null;
+  model?: string | null;
+  state?: string | null;
+  description?: string | null;
+  rating?: number | null;
+}
+
+export interface SearchEmbeddingOptions {
+  embedding: string;
+  userIds: string[];
+}
+
+export interface SearchPeopleOptions {
+  personIds?: string[];
+}
+
+export interface SearchTagOptions {
+  tagIds?: string[] | null;
+}
+
+export interface SearchAlbumOptions {
+  albumIds?: string[];
+}
+
+export interface SearchOrderOptions {
+  orderDirection?: 'asc' | 'desc';
+}
+
+export interface SearchPaginationOptions {
+  page: number;
+  size: number;
+}
+
+type BaseAssetSearchOptions = SearchDateOptions &
+  SearchIdOptions &
+  SearchExifOptions &
+  SearchOrderOptions &
+  SearchPathOptions &
+  SearchStatusOptions &
+  SearchUserIdOptions &
+  SearchPeopleOptions &
+  SearchTagOptions &
+  SearchAlbumOptions;
+
+export type AssetSearchOptions = BaseAssetSearchOptions & SearchRelationOptions;
+
+export type AssetSearchBuilderOptions = Omit<AssetSearchOptions, 'orderDirection'>;
+
+export type SmartSearchOptions = SearchDateOptions &
+  SearchEmbeddingOptions &
+  SearchExifOptions &
+  SearchOneToOneRelationOptions &
+  SearchStatusOptions &
+  SearchUserIdOptions &
+  SearchPeopleOptions &
+  SearchTagOptions;
+
+export interface FaceEmbeddingSearch extends SearchEmbeddingOptions {
+  hasPerson?: boolean;
+  numResults: number;
+  maxDistance: number;
+  minBirthDate?: Date | null;
+}
+
+export interface FaceSearchResult {
+  distance: number;
+  id: string;
+  personId: string | null;
+}
+
+export interface AssetDuplicateResult {
+  assetId: string;
+  duplicateId: string | null;
+  distance: number;
+}
+
+export interface GetStatesOptions {
+  country?: string;
+}
+
+export interface GetCitiesOptions extends GetStatesOptions {
+  state?: string;
+}
+
+export interface GetCameraModelsOptions {
+  make?: string;
+}
+
+export interface GetCameraMakesOptions {
+  model?: string;
+}
 
 @Injectable()
-export class SearchRepository implements ISearchRepository {
-  private vectorExtension: VectorExtension;
-  private faceColumns: string[];
-  private assetsByCityQuery: string;
-
-  constructor(
-    @InjectRepository(AssetEntity) private assetRepository: Repository<AssetEntity>,
-    @InjectRepository(ExifEntity) private exifRepository: Repository<ExifEntity>,
-    @InjectRepository(AssetFaceEntity) private assetFaceRepository: Repository<AssetFaceEntity>,
-    @InjectRepository(SmartSearchEntity) private smartSearchRepository: Repository<SmartSearchEntity>,
-    @InjectRepository(GeodataPlacesEntity) private geodataPlacesRepository: Repository<GeodataPlacesEntity>,
-    @Inject(ILoggerRepository) private logger: ILoggerRepository,
-    @Inject(IConfigRepository) configRepository: IConfigRepository,
-  ) {
-    this.vectorExtension = configRepository.getEnv().database.vectorExtension;
-    this.logger.setContext(SearchRepository.name);
-    this.faceColumns = this.assetFaceRepository.manager.connection
-      .getMetadata(AssetFaceEntity)
-      .ownColumns.map((column) => column.propertyName)
-      .filter((propertyName) => propertyName !== 'embedding');
-    this.assetsByCityQuery =
-      assetsByCityCte +
-      this.assetRepository
-        .createQueryBuilder('asset')
-        .innerJoinAndSelect('asset.exifInfo', 'exif')
-        .withDeleted()
-        .getQuery() +
-      ' INNER JOIN cte ON asset.id = cte."assetId" ORDER BY exif.city';
-  }
+export class SearchRepository {
+  constructor(@InjectKysely() private db: Kysely<DB>) {}
 
   @GenerateSql({
     params: [
@@ -73,15 +180,32 @@ export class SearchRepository implements ISearchRepository {
       },
     ],
   })
-  async searchMetadata(pagination: SearchPaginationOptions, options: AssetSearchOptions): Paginated<AssetEntity> {
-    let builder = this.assetRepository.createQueryBuilder('asset');
-    builder = searchAssetBuilder(builder, options).orderBy('asset.fileCreatedAt', options.orderDirection ?? 'DESC');
+  async searchMetadata(pagination: SearchPaginationOptions, options: AssetSearchOptions) {
+    const orderDirection = (options.orderDirection?.toLowerCase() || 'desc') as OrderByDirection;
+    const items = await searchAssetBuilder(this.db, options)
+      .selectAll('asset')
+      .orderBy('asset.fileCreatedAt', orderDirection)
+      .limit(pagination.size + 1)
+      .offset((pagination.page - 1) * pagination.size)
+      .execute();
 
-    return paginatedBuilder<AssetEntity>(builder, {
-      mode: PaginationMode.SKIP_TAKE,
-      skip: (pagination.page - 1) * pagination.size,
-      take: pagination.size,
-    });
+    return paginationHelper(items, pagination.size);
+  }
+
+  @GenerateSql({
+    params: [
+      {
+        takenAfter: DummyValue.DATE,
+        lensModel: DummyValue.STRING,
+        isFavorite: true,
+        userIds: [DummyValue.UUID],
+      },
+    ],
+  })
+  searchStatistics(options: AssetSearchOptions) {
+    return searchAssetBuilder(this.db, options)
+      .select((qb) => qb.fn.countAll<number>().as('total'))
+      .executeTakeFirstOrThrow();
   }
 
   @GenerateSql({
@@ -96,21 +220,21 @@ export class SearchRepository implements ISearchRepository {
       },
     ],
   })
-  async searchRandom(size: number, options: AssetSearchOptions): Promise<AssetEntity[]> {
-    const builder1 = searchAssetBuilder(this.assetRepository.createQueryBuilder('asset'), options);
-    const builder2 = builder1.clone();
-
+  async searchRandom(size: number, options: AssetSearchOptions) {
     const uuid = randomUUID();
-    builder1.andWhere('asset.id > :uuid', { uuid }).orderBy('asset.id').take(size);
-    builder2.andWhere('asset.id < :uuid', { uuid }).orderBy('asset.id').take(size);
-
-    const [assets1, assets2] = await Promise.all([builder1.getMany(), builder2.getMany()]);
-    const missingCount = size - assets1.length;
-    for (let i = 0; i < missingCount && i < assets2.length; i++) {
-      assets1.push(assets2[i]);
-    }
-
-    return assets1;
+    const builder = searchAssetBuilder(this.db, options);
+    const lessThan = builder
+      .selectAll('asset')
+      .where('asset.id', '<', uuid)
+      .orderBy(sql`random()`)
+      .limit(size);
+    const greaterThan = builder
+      .selectAll('asset')
+      .where('asset.id', '>', uuid)
+      .orderBy(sql`random()`)
+      .limit(size);
+    const { rows } = await sql<MapAsset>`${lessThan} union all ${greaterThan} limit ${size}`.execute(this.db);
+    return rows;
   }
 
   @GenerateSql({
@@ -118,7 +242,7 @@ export class SearchRepository implements ISearchRepository {
       { page: 1, size: 200 },
       {
         takenAfter: DummyValue.DATE,
-        embedding: Array.from({ length: 512 }, Math.random),
+        embedding: DummyValue.VECTOR,
         lensModel: DummyValue.STRING,
         withStacked: true,
         isFavorite: true,
@@ -126,353 +250,208 @@ export class SearchRepository implements ISearchRepository {
       },
     ],
   })
-  async searchSmart(
-    pagination: SearchPaginationOptions,
-    { embedding, userIds, ...options }: SmartSearchOptions,
-  ): Paginated<AssetEntity> {
-    let results: PaginationResult<AssetEntity> = { items: [], hasNextPage: false };
-
-    await this.assetRepository.manager.transaction(async (manager) => {
-      let builder = manager.createQueryBuilder(AssetEntity, 'asset');
-      builder = searchAssetBuilder(builder, options);
-      builder
-        .innerJoin('asset.smartSearch', 'search')
-        .andWhere('asset.ownerId IN (:...userIds )')
-        .orderBy('search.embedding <=> :embedding')
-        .setParameters({ userIds, embedding: asVector(embedding) });
-
-      const runtimeConfig = this.getRuntimeConfig(pagination.size);
-      if (runtimeConfig) {
-        await manager.query(runtimeConfig);
-      }
-      results = await paginatedBuilder<AssetEntity>(builder, {
-        mode: PaginationMode.LIMIT_OFFSET,
-        skip: (pagination.page - 1) * pagination.size,
-        take: pagination.size,
-      });
-    });
-
-    return results;
-  }
-
-  @GenerateSql({
-    params: [
-      {
-        embedding: Array.from({ length: 512 }, Math.random),
-        maxDistance: 0.6,
-        userIds: [DummyValue.UUID],
-      },
-    ],
-  })
-  searchDuplicates({
-    assetId,
-    embedding,
-    maxDistance,
-    type,
-    userIds,
-  }: AssetDuplicateSearch): Promise<AssetDuplicateResult[]> {
-    const cte = this.assetRepository.createQueryBuilder('asset');
-    cte
-      .select('search.assetId', 'assetId')
-      .addSelect('asset.duplicateId', 'duplicateId')
-      .addSelect(`search.embedding <=> :embedding`, 'distance')
-      .innerJoin('asset.smartSearch', 'search')
-      .where('asset.ownerId IN (:...userIds )')
-      .andWhere('asset.id != :assetId')
-      .andWhere('asset.isVisible = :isVisible')
-      .andWhere('asset.type = :type')
-      .orderBy('search.embedding <=> :embedding')
-      .limit(64)
-      .setParameters({ assetId, embedding: asVector(embedding), isVisible: true, type, userIds });
-
-    const builder = this.assetRepository.manager
-      .createQueryBuilder()
-      .addCommonTableExpression(cte, 'cte')
-      .from('cte', 'res')
-      .select('res.*');
-
-    if (maxDistance) {
-      builder.where('res.distance <= :maxDistance', { maxDistance });
+  searchSmart(pagination: SearchPaginationOptions, options: SmartSearchOptions) {
+    if (!isValidInteger(pagination.size, { min: 1, max: 1000 })) {
+      throw new Error(`Invalid value for 'size': ${pagination.size}`);
     }
 
-    return builder.getRawMany() as Promise<AssetDuplicateResult[]>;
+    return this.db.transaction().execute(async (trx) => {
+      await sql`set local vchordrq.probes = ${sql.lit(probes[VectorIndex.Clip])}`.execute(trx);
+      const items = await searchAssetBuilder(trx, options)
+        .selectAll('asset')
+        .innerJoin('smart_search', 'asset.id', 'smart_search.assetId')
+        .orderBy(sql`smart_search.embedding <=> ${options.embedding}`)
+        .limit(pagination.size + 1)
+        .offset((pagination.page - 1) * pagination.size)
+        .execute();
+      return paginationHelper(items, pagination.size);
+    });
   }
 
   @GenerateSql({
     params: [
       {
         userIds: [DummyValue.UUID],
-        embedding: Array.from({ length: 512 }, Math.random),
+        embedding: DummyValue.VECTOR,
         numResults: 10,
         maxDistance: 0.6,
       },
     ],
   })
-  async searchFaces({
-    userIds,
-    embedding,
-    numResults,
-    maxDistance,
-    hasPerson,
-  }: FaceEmbeddingSearch): Promise<FaceSearchResult[]> {
-    if (!isValidInteger(numResults, { min: 1 })) {
+  searchFaces({ userIds, embedding, numResults, maxDistance, hasPerson, minBirthDate }: FaceEmbeddingSearch) {
+    if (!isValidInteger(numResults, { min: 1, max: 1000 })) {
       throw new Error(`Invalid value for 'numResults': ${numResults}`);
     }
 
-    // setting this too low messes with prefilter recall
-    numResults = Math.max(numResults, 64);
-
-    let results: Array<AssetFaceEntity & { distance: number }> = [];
-    await this.assetRepository.manager.transaction(async (manager) => {
-      const cte = manager
-        .createQueryBuilder(AssetFaceEntity, 'faces')
-        .select('search.embedding <=> :embedding', 'distance')
-        .innerJoin('faces.asset', 'asset')
-        .innerJoin('faces.faceSearch', 'search')
-        .where('asset.ownerId IN (:...userIds )')
-        .orderBy('search.embedding <=> :embedding')
-        .setParameters({ userIds, embedding: asVector(embedding) });
-
-      cte.limit(numResults);
-
-      if (hasPerson) {
-        cte.andWhere('faces."personId" IS NOT NULL');
-      }
-
-      for (const col of this.faceColumns) {
-        cte.addSelect(`faces.${col}`, col);
-      }
-
-      const runtimeConfig = this.getRuntimeConfig(numResults);
-      if (runtimeConfig) {
-        await manager.query(runtimeConfig);
-      }
-      results = await manager
-        .createQueryBuilder()
-        .select('res.*')
-        .addCommonTableExpression(cte, 'cte')
-        .from('cte', 'res')
-        .where('res.distance <= :maxDistance', { maxDistance })
-        .orderBy('res.distance')
-        .getRawMany();
+    return this.db.transaction().execute(async (trx) => {
+      await sql`set local vchordrq.probes = ${sql.lit(probes[VectorIndex.Face])}`.execute(trx);
+      return await trx
+        .with('cte', (qb) =>
+          qb
+            .selectFrom('asset_face')
+            .select([
+              'asset_face.id',
+              'asset_face.personId',
+              sql<number>`face_search.embedding <=> ${embedding}`.as('distance'),
+            ])
+            .innerJoin('asset', 'asset.id', 'asset_face.assetId')
+            .innerJoin('face_search', 'face_search.faceId', 'asset_face.id')
+            .leftJoin('person', 'person.id', 'asset_face.personId')
+            .where('asset.ownerId', '=', anyUuid(userIds))
+            .where('asset.deletedAt', 'is', null)
+            .$if(!!hasPerson, (qb) => qb.where('asset_face.personId', 'is not', null))
+            .$if(!!minBirthDate, (qb) =>
+              qb.where((eb) =>
+                eb.or([eb('person.birthDate', 'is', null), eb('person.birthDate', '<=', minBirthDate!)]),
+              ),
+            )
+            .orderBy('distance')
+            .limit(numResults),
+        )
+        .selectFrom('cte')
+        .selectAll()
+        .where('cte.distance', '<=', maxDistance)
+        .execute();
     });
-    return results.map((row) => ({
-      face: this.assetFaceRepository.create(row),
-      distance: row.distance,
-    }));
   }
 
   @GenerateSql({ params: [DummyValue.STRING] })
-  async searchPlaces(placeName: string): Promise<GeodataPlacesEntity[]> {
-    return await this.geodataPlacesRepository
-      .createQueryBuilder('geoplaces')
-      .where(`f_unaccent(name) %>> f_unaccent(:placeName)`)
-      .orWhere(`f_unaccent("admin2Name") %>> f_unaccent(:placeName)`)
-      .orWhere(`f_unaccent("admin1Name") %>> f_unaccent(:placeName)`)
-      .orWhere(`f_unaccent("alternateNames") %>> f_unaccent(:placeName)`)
+  searchPlaces(placeName: string) {
+    return this.db
+      .selectFrom('geodata_places')
+      .selectAll()
+      .where(
+        () =>
+          // kysely doesn't support trigram %>> or <->>> operators
+          sql`
+            f_unaccent(name) %>> f_unaccent(${placeName}) or
+            f_unaccent("admin2Name") %>> f_unaccent(${placeName}) or
+            f_unaccent("admin1Name") %>> f_unaccent(${placeName}) or
+            f_unaccent("alternateNames") %>> f_unaccent(${placeName})
+          `,
+      )
       .orderBy(
-        `
-        COALESCE(f_unaccent(name) <->>> f_unaccent(:placeName), 0.1) +
-        COALESCE(f_unaccent("admin2Name") <->>> f_unaccent(:placeName), 0.1) +
-        COALESCE(f_unaccent("admin1Name") <->>> f_unaccent(:placeName), 0.1) +
-        COALESCE(f_unaccent("alternateNames") <->>> f_unaccent(:placeName), 0.1)
+        sql`
+          coalesce(f_unaccent(name) <->>> f_unaccent(${placeName}), 0.1) +
+          coalesce(f_unaccent("admin2Name") <->>> f_unaccent(${placeName}), 0.1) +
+          coalesce(f_unaccent("admin1Name") <->>> f_unaccent(${placeName}), 0.1) +
+          coalesce(f_unaccent("alternateNames") <->>> f_unaccent(${placeName}), 0.1)
         `,
       )
-      .setParameters({ placeName })
       .limit(20)
-      .getMany();
+      .execute();
   }
 
   @GenerateSql({ params: [[DummyValue.UUID]] })
-  async getAssetsByCity(userIds: string[]): Promise<AssetEntity[]> {
-    const parameters = [userIds, true, false, AssetType.IMAGE];
-    const rawRes = await this.assetRepository.query(this.assetsByCityQuery, parameters);
+  getAssetsByCity(userIds: string[]) {
+    return this.db
+      .withRecursive('cte', (qb) => {
+        const base = qb
+          .selectFrom('asset_exif')
+          .select(['city', 'assetId'])
+          .innerJoin('asset', 'asset.id', 'asset_exif.assetId')
+          .where('asset.ownerId', '=', anyUuid(userIds))
+          .where('asset.visibility', '=', AssetVisibility.Timeline)
+          .where('asset.type', '=', AssetType.Image)
+          .where('asset.deletedAt', 'is', null)
+          .orderBy('city')
+          .limit(1);
 
-    const items: AssetEntity[] = [];
-    for (const res of rawRes) {
-      const item = { exifInfo: {} as Record<string, any> } as Record<string, any>;
-      for (const [key, value] of Object.entries(res)) {
-        if (key.startsWith('exif_')) {
-          item.exifInfo[key.replace('exif_', '')] = value;
-        } else {
-          item[key.replace('asset_', '')] = value;
-        }
-      }
-      items.push(item as AssetEntity);
-    }
+        const recursive = qb
+          .selectFrom('cte')
+          .select(['l.city', 'l.assetId'])
+          .innerJoinLateral(
+            (qb) =>
+              qb
+                .selectFrom('asset_exif')
+                .select(['city', 'assetId'])
+                .innerJoin('asset', 'asset.id', 'asset_exif.assetId')
+                .where('asset.ownerId', '=', anyUuid(userIds))
+                .where('asset.visibility', '=', AssetVisibility.Timeline)
+                .where('asset.type', '=', AssetType.Image)
+                .where('asset.deletedAt', 'is', null)
+                .whereRef('asset_exif.city', '>', 'cte.city')
+                .orderBy('city')
+                .limit(1)
+                .as('l'),
+            (join) => join.onTrue(),
+          );
 
-    return items;
+        return sql<{ city: string; assetId: string }>`(${base} union all ${recursive})`;
+      })
+      .selectFrom('asset')
+      .innerJoin('asset_exif', 'asset.id', 'asset_exif.assetId')
+      .innerJoin('cte', 'asset.id', 'cte.assetId')
+      .selectAll('asset')
+      .select((eb) =>
+        eb
+          .fn('to_jsonb', [eb.table('asset_exif')])
+          .$castTo<Selectable<AssetExifTable>>()
+          .as('exifInfo'),
+      )
+      .orderBy('asset_exif.city')
+      .execute();
   }
 
-  async upsert(assetId: string, embedding: number[]): Promise<void> {
-    await this.smartSearchRepository.upsert(
-      { assetId, embedding: () => asVector(embedding, true) },
-      { conflictPaths: ['assetId'] },
-    );
+  async upsert(assetId: string, embedding: string): Promise<void> {
+    await this.db
+      .insertInto('smart_search')
+      .values({ assetId, embedding })
+      .onConflict((oc) => oc.column('assetId').doUpdateSet((eb) => ({ embedding: eb.ref('excluded.embedding') })))
+      .execute();
   }
 
-  async getDimensionSize(): Promise<number> {
-    const res = await this.smartSearchRepository.manager.query(`
-      SELECT atttypmod as dimsize
-      FROM pg_attribute f
-        JOIN pg_class c ON c.oid = f.attrelid
-      WHERE c.relkind = 'r'::char
-        AND f.attnum > 0
-        AND c.relname = 'smart_search'
-        AND f.attname = 'embedding'`);
-
-    const dimSize = res[0]['dimsize'];
-    if (!isValidInteger(dimSize, { min: 1, max: 2 ** 16 })) {
-      throw new Error(`Could not retrieve CLIP dimension size`);
-    }
-    return dimSize;
-  }
-
-  setDimensionSize(dimSize: number): Promise<void> {
-    if (!isValidInteger(dimSize, { min: 1, max: 2 ** 16 })) {
-      throw new Error(`Invalid CLIP dimension size: ${dimSize}`);
-    }
-
-    return this.smartSearchRepository.manager.transaction(async (manager) => {
-      await manager.clear(SmartSearchEntity);
-      await manager.query(`ALTER TABLE smart_search ALTER COLUMN embedding SET DATA TYPE vector(${dimSize})`);
-      await manager.query(`REINDEX INDEX clip_index`);
-    });
-  }
-
-  async deleteAllSearchEmbeddings(): Promise<void> {
-    return this.smartSearchRepository.clear();
-  }
-
-  @GenerateSql({ params: [[DummyValue.UUID]] })
   async getCountries(userIds: string[]): Promise<string[]> {
-    const query = this.exifRepository
-      .createQueryBuilder('exif')
-      .innerJoin('exif.asset', 'asset')
-      .where('asset.ownerId IN (:...userIds )', { userIds })
-      .andWhere(`exif.country != ''`)
-      .andWhere('exif.country IS NOT NULL')
-      .select('exif.country', 'country')
-      .distinctOn(['exif.country']);
-
-    const results = await query.getRawMany<{ country: string }>();
-    return results.map(({ country }) => country);
+    const res = await this.getExifField('country', userIds).execute();
+    return res.map((row) => row.country!);
   }
 
   @GenerateSql({ params: [[DummyValue.UUID], DummyValue.STRING] })
   async getStates(userIds: string[], { country }: GetStatesOptions): Promise<string[]> {
-    const query = this.exifRepository
-      .createQueryBuilder('exif')
-      .innerJoin('exif.asset', 'asset')
-      .where('asset.ownerId IN (:...userIds )', { userIds })
-      .andWhere(`exif.state != ''`)
-      .andWhere('exif.state IS NOT NULL')
-      .select('exif.state', 'state')
-      .distinctOn(['exif.state']);
+    const res = await this.getExifField('state', userIds)
+      .$if(!!country, (qb) => qb.where('country', '=', country!))
+      .execute();
 
-    if (country) {
-      query.andWhere('exif.country = :country', { country });
-    }
-
-    const result = await query.getRawMany<{ state: string }>();
-    return result.map(({ state }) => state);
+    return res.map((row) => row.state!);
   }
 
   @GenerateSql({ params: [[DummyValue.UUID], DummyValue.STRING, DummyValue.STRING] })
   async getCities(userIds: string[], { country, state }: GetCitiesOptions): Promise<string[]> {
-    const query = this.exifRepository
-      .createQueryBuilder('exif')
-      .innerJoin('exif.asset', 'asset')
-      .where('asset.ownerId IN (:...userIds )', { userIds })
-      .andWhere(`exif.city != ''`)
-      .andWhere('exif.city IS NOT NULL')
-      .select('exif.city', 'city')
-      .distinctOn(['exif.city']);
+    const res = await this.getExifField('city', userIds)
+      .$if(!!country, (qb) => qb.where('country', '=', country!))
+      .$if(!!state, (qb) => qb.where('state', '=', state!))
+      .execute();
 
-    if (country) {
-      query.andWhere('exif.country = :country', { country });
-    }
-
-    if (state) {
-      query.andWhere('exif.state = :state', { state });
-    }
-
-    const results = await query.getRawMany<{ city: string }>();
-    return results.map(({ city }) => city);
+    return res.map((row) => row.city!);
   }
 
   @GenerateSql({ params: [[DummyValue.UUID], DummyValue.STRING] })
   async getCameraMakes(userIds: string[], { model }: GetCameraMakesOptions): Promise<string[]> {
-    const query = this.exifRepository
-      .createQueryBuilder('exif')
-      .innerJoin('exif.asset', 'asset')
-      .where('asset.ownerId IN (:...userIds )', { userIds })
-      .andWhere(`exif.make != ''`)
-      .andWhere('exif.make IS NOT NULL')
-      .select('exif.make', 'make')
-      .distinctOn(['exif.make']);
+    const res = await this.getExifField('make', userIds)
+      .$if(!!model, (qb) => qb.where('model', '=', model!))
+      .execute();
 
-    if (model) {
-      query.andWhere('exif.model = :model', { model });
-    }
-
-    const results = await query.getRawMany<{ make: string }>();
-    return results.map(({ make }) => make);
+    return res.map((row) => row.make!);
   }
 
   @GenerateSql({ params: [[DummyValue.UUID], DummyValue.STRING] })
   async getCameraModels(userIds: string[], { make }: GetCameraModelsOptions): Promise<string[]> {
-    const query = this.exifRepository
-      .createQueryBuilder('exif')
-      .innerJoin('exif.asset', 'asset')
-      .where('asset.ownerId IN (:...userIds )', { userIds })
-      .andWhere(`exif.model != ''`)
-      .andWhere('exif.model IS NOT NULL')
-      .select('exif.model', 'model')
-      .distinctOn(['exif.model']);
+    const res = await this.getExifField('model', userIds)
+      .$if(!!make, (qb) => qb.where('make', '=', make!))
+      .execute();
 
-    if (make) {
-      query.andWhere('exif.make = :make', { make });
-    }
-
-    const results = await query.getRawMany<{ model: string }>();
-    return results.map(({ model }) => model);
+    return res.map((row) => row.model!);
   }
 
-  private getRuntimeConfig(numResults?: number): string | undefined {
-    if (this.vectorExtension === DatabaseExtension.VECTOR) {
-      return 'SET LOCAL hnsw.ef_search = 1000;'; // mitigate post-filter recall
-    }
-
-    if (numResults && numResults !== 100) {
-      return `SET LOCAL vectors.hnsw_ef_search = ${Math.max(numResults, 100)};`;
-    }
+  private getExifField<K extends 'city' | 'state' | 'country' | 'make' | 'model'>(field: K, userIds: string[]) {
+    return this.db
+      .selectFrom('asset_exif')
+      .select(field)
+      .distinctOn(field)
+      .innerJoin('asset', 'asset.id', 'asset_exif.assetId')
+      .where('ownerId', '=', anyUuid(userIds))
+      .where('visibility', '=', AssetVisibility.Timeline)
+      .where('deletedAt', 'is', null)
+      .where(field, 'is not', null);
   }
 }
-
-// the performance difference between this and the normal way is too huge to ignore, e.g. 3s vs 4ms
-const assetsByCityCte = `
-WITH RECURSIVE cte AS (
-  (
-    SELECT city, "assetId"
-    FROM exif
-    INNER JOIN assets ON exif."assetId" = assets.id
-    WHERE "ownerId" = ANY($1::uuid[]) AND "isVisible" = $2 AND "isArchived" = $3 AND type = $4
-    ORDER BY city
-    LIMIT 1
-  )
-
-  UNION ALL
-
-  SELECT l.city, l."assetId"
-  FROM cte c
-    , LATERAL (
-    SELECT city, "assetId"
-    FROM exif
-    INNER JOIN assets ON exif."assetId" = assets.id
-    WHERE city > c.city AND "ownerId" = ANY($1::uuid[]) AND "isVisible" = $2 AND "isArchived" = $3 AND type = $4
-    ORDER BY city
-    LIMIT 1
-    ) l
-)
-`;

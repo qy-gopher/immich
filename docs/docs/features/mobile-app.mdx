@@ -36,11 +36,15 @@ You can enable automatic backup on supported devices. For more information see [
 If you have a large number of photos on the device, and you would prefer not to backup all the photos, then it might be prudent to only backup selected photos from device to the Immich server.
 
 First, you need to enable the Storage Indicator in your app's settings. Navigate to **<ins>Settings -> Photo Grid</ins>** and enable **"Show Storage indicator on asset tiles"**; this makes it easy to distinguish local-only assets and synced assets.
+
 :::note
+
 This will enable a small cloud icon on the bottom right corner of the asset tile, indicating that the asset is synced to the server:
 
 1. <Icon path={mdiCloudOffOutline} size={1} /> - Local-only asset; not synced to the server
-2. <Icon path={mdiCloudCheckOutline} size={1} /> - Asset is synced to the server :::
+2. <Icon path={mdiCloudCheckOutline} size={1} /> - Asset is synced to the server
+
+:::
 
 Now make sure that the local album is selected in the backup screen (steps 1-2 above). You can find these albums listed in **<ins>Library -> On this device</ins>**. To selectively upload photos from these albums, simply select the local-only photos and tap on "Upload" button in the dynamic bottom menu.
 
@@ -84,9 +88,9 @@ It will only reflect files you add.
 :::
 
 If the same asset is in more than one album it will only sync to the first album it's in, after that it won't sync again even if the user clicks sync albums manually.
-To overcome this limitation, the files must be removed from the blacklist by
+To overcome this limitation, the files must be removed from the ignore list by
 App settings -> Advanced -> Duplicate Assets -> Clear
 
 :::info
-Cleaning duplicate assets from the list will cause all the previously uploaded duplicate files to be re-uploaded, the files will not actually be uploaded and will be rejected on the server side (due to duplication) but will be synchronized to the album and at the end will be added to the black list again at the end of the synchronization.
+Cleaning duplicate assets from the list will cause all the previously uploaded duplicate files to be re-uploaded, the files will not actually be uploaded and will be rejected on the server side (due to duplication) but will be synchronized to the album and at the end will be added to the ignore list again at the end of the synchronization.
 :::

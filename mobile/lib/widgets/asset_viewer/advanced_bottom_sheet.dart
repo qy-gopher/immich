@@ -35,10 +35,10 @@ class AdvancedBottomSheet extends HookConsumerWidget {
                 const SizedBox(height: 32.0),
                 Container(
                   decoration: BoxDecoration(
-                    color: context.isDarkTheme
-                        ? Colors.grey[900]
-                        : Colors.grey[200],
-                    borderRadius: BorderRadius.circular(15.0),
+                    color: context.isDarkTheme ? Colors.grey[900] : Colors.grey[200],
+                    borderRadius: const BorderRadius.all(
+                      Radius.circular(15.0),
+                    ),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.only(
@@ -64,8 +64,7 @@ class AdvancedBottomSheet extends HookConsumerWidget {
                                   SnackBar(
                                     content: Text(
                                       "Copied to clipboard",
-                                      style:
-                                          context.textTheme.bodyLarge?.copyWith(
+                                      style: context.textTheme.bodyLarge?.copyWith(
                                         color: context.primaryColor,
                                       ),
                                     ),

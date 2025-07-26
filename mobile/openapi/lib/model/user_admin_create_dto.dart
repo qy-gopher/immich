@@ -13,7 +13,9 @@ part of openapi.api;
 class UserAdminCreateDto {
   /// Returns a new [UserAdminCreateDto] instance.
   UserAdminCreateDto({
+    this.avatarColor,
     required this.email,
+    this.isAdmin,
     required this.name,
     this.notify,
     required this.password,
@@ -22,7 +24,17 @@ class UserAdminCreateDto {
     this.storageLabel,
   });
 
+  UserAvatarColor? avatarColor;
+
   String email;
+
+  ///
+  /// Please note: This property should have been non-nullable! Since the specification file
+  /// does not include a default value (using the "default:" property), however, the generated
+  /// source code must fall back to having a nullable type.
+  /// Consider adding a "default:" property in the specification file to hide this note.
+  ///
+  bool? isAdmin;
 
   String name;
 
@@ -36,7 +48,7 @@ class UserAdminCreateDto {
 
   String password;
 
-  /// Minimum value: 1
+  /// Minimum value: 0
   int? quotaSizeInBytes;
 
   ///
@@ -51,7 +63,9 @@ class UserAdminCreateDto {
 
   @override
   bool operator ==(Object other) => identical(this, other) || other is UserAdminCreateDto &&
+    other.avatarColor == avatarColor &&
     other.email == email &&
+    other.isAdmin == isAdmin &&
     other.name == name &&
     other.notify == notify &&
     other.password == password &&
@@ -62,7 +76,9 @@ class UserAdminCreateDto {
   @override
   int get hashCode =>
     // ignore: unnecessary_parenthesis
+    (avatarColor == null ? 0 : avatarColor!.hashCode) +
     (email.hashCode) +
+    (isAdmin == null ? 0 : isAdmin!.hashCode) +
     (name.hashCode) +
     (notify == null ? 0 : notify!.hashCode) +
     (password.hashCode) +
@@ -71,11 +87,21 @@ class UserAdminCreateDto {
     (storageLabel == null ? 0 : storageLabel!.hashCode);
 
   @override
-  String toString() => 'UserAdminCreateDto[email=$email, name=$name, notify=$notify, password=$password, quotaSizeInBytes=$quotaSizeInBytes, shouldChangePassword=$shouldChangePassword, storageLabel=$storageLabel]';
+  String toString() => 'UserAdminCreateDto[avatarColor=$avatarColor, email=$email, isAdmin=$isAdmin, name=$name, notify=$notify, password=$password, quotaSizeInBytes=$quotaSizeInBytes, shouldChangePassword=$shouldChangePassword, storageLabel=$storageLabel]';
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
+    if (this.avatarColor != null) {
+      json[r'avatarColor'] = this.avatarColor;
+    } else {
+    //  json[r'avatarColor'] = null;
+    }
       json[r'email'] = this.email;
+    if (this.isAdmin != null) {
+      json[r'isAdmin'] = this.isAdmin;
+    } else {
+    //  json[r'isAdmin'] = null;
+    }
       json[r'name'] = this.name;
     if (this.notify != null) {
       json[r'notify'] = this.notify;
@@ -110,7 +136,9 @@ class UserAdminCreateDto {
       final json = value.cast<String, dynamic>();
 
       return UserAdminCreateDto(
+        avatarColor: UserAvatarColor.fromJson(json[r'avatarColor']),
         email: mapValueOfType<String>(json, r'email')!,
+        isAdmin: mapValueOfType<bool>(json, r'isAdmin'),
         name: mapValueOfType<String>(json, r'name')!,
         notify: mapValueOfType<bool>(json, r'notify'),
         password: mapValueOfType<String>(json, r'password')!,

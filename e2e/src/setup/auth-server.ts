@@ -12,6 +12,7 @@ export enum OAuthUser {
   NO_NAME = 'no-name',
   WITH_QUOTA = 'with-quota',
   WITH_USERNAME = 'with-username',
+  WITH_ROLE = 'with-role',
 }
 
 const claims = [
@@ -34,6 +35,12 @@ const claims = [
     preferred_username: 'user-quota',
     immich_quota: 25,
   },
+  {
+    sub: OAuthUser.WITH_ROLE,
+    email: 'oauth-with-role@immich.app',
+    email_verified: true,
+    immich_role: 'admin',
+  },
 ];
 
 const withDefaultClaims = (sub: string) => ({
@@ -51,7 +58,7 @@ const setup = async () => {
   const { privateKey, publicKey } = await generateKeyPair('RS256');
 
   const redirectUris = ['http://127.0.0.1:2285/auth/login', 'https://photos.immich.app/oauth/mobile-redirect'];
-  const port = 3000;
+  const port = 2286;
   const host = '0.0.0.0';
   const oidc = new Provider(`http://${host}:${port}`, {
     renderError: async (ctx, out, error) => {
@@ -64,7 +71,15 @@ const setup = async () => {
     claims: {
       openid: ['sub'],
       email: ['email', 'email_verified'],
-      profile: ['name', 'given_name', 'family_name', 'preferred_username', 'immich_quota', 'immich_username'],
+      profile: [
+        'name',
+        'given_name',
+        'family_name',
+        'preferred_username',
+        'immich_quota',
+        'immich_username',
+        'immich_role',
+      ],
     },
     features: {
       jwtUserinfo: {

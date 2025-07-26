@@ -1,37 +1,31 @@
 import { BadRequestException } from '@nestjs/common';
-import { StorageCore } from 'src/cores/storage.core';
+import { GeneratedImageType, StorageCore } from 'src/cores/storage.core';
+import { AssetFile } from 'src/database';
 import { BulkIdErrorReason, BulkIdResponseDto } from 'src/dtos/asset-ids.response.dto';
 import { UploadFieldName } from 'src/dtos/asset-media.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
-import { AssetFileEntity } from 'src/entities/asset-files.entity';
-import { AssetFileType, AssetType, Permission } from 'src/enum';
-import { IAccessRepository } from 'src/interfaces/access.interface';
-import { IAssetRepository } from 'src/interfaces/asset.interface';
-import { IEventRepository } from 'src/interfaces/event.interface';
-import { IPartnerRepository } from 'src/interfaces/partner.interface';
+import { AssetFileType, AssetType, AssetVisibility, Permission } from 'src/enum';
 import { AuthRequest } from 'src/middleware/auth.guard';
-import { ImmichFile } from 'src/middleware/file-upload.interceptor';
-import { UploadFile } from 'src/services/asset-media.service';
+import { AccessRepository } from 'src/repositories/access.repository';
+import { AssetRepository } from 'src/repositories/asset.repository';
+import { EventRepository } from 'src/repositories/event.repository';
+import { PartnerRepository } from 'src/repositories/partner.repository';
+import { IBulkAsset, ImmichFile, UploadFile } from 'src/types';
 import { checkAccess } from 'src/utils/access';
 
-export interface IBulkAsset {
-  getAssetIds: (id: string, assetIds: string[]) => Promise<Set<string>>;
-  addAssetIds: (id: string, assetIds: string[]) => Promise<void>;
-  removeAssetIds: (id: string, assetIds: string[]) => Promise<void>;
-}
-
-const getFileByType = (files: AssetFileEntity[] | undefined, type: AssetFileType) => {
-  return (files || []).find((file) => file.type === type);
+export const getAssetFile = (files: AssetFile[], type: AssetFileType | GeneratedImageType) => {
+  return files.find((file) => file.type === type);
 };
 
-export const getAssetFiles = (files?: AssetFileEntity[]) => ({
-  previewFile: getFileByType(files, AssetFileType.PREVIEW),
-  thumbnailFile: getFileByType(files, AssetFileType.THUMBNAIL),
+export const getAssetFiles = (files: AssetFile[]) => ({
+  fullsizeFile: getAssetFile(files, AssetFileType.FullSize),
+  previewFile: getAssetFile(files, AssetFileType.Preview),
+  thumbnailFile: getAssetFile(files, AssetFileType.Thumbnail),
 });
 
 export const addAssets = async (
   auth: AuthDto,
-  repositories: { access: IAccessRepository; bulk: IBulkAsset },
+  repositories: { access: AccessRepository; bulk: IBulkAsset },
   dto: { parentId: string; assetIds: string[] },
 ) => {
   const { access, bulk } = repositories;
@@ -39,7 +33,7 @@ export const addAssets = async (
   const notPresentAssetIds = dto.assetIds.filter((id) => !existingAssetIds.has(id));
   const allowedAssetIds = await checkAccess(access, {
     auth,
-    permission: Permission.ASSET_SHARE,
+    permission: Permission.AssetShare,
     ids: notPresentAssetIds,
   });
 
@@ -71,7 +65,7 @@ export const addAssets = async (
 
 export const removeAssets = async (
   auth: AuthDto,
-  repositories: { access: IAccessRepository; bulk: IBulkAsset },
+  repositories: { access: AccessRepository; bulk: IBulkAsset },
   dto: { parentId: string; assetIds: string[]; canAlwaysRemove: Permission },
 ) => {
   const { access, bulk } = repositories;
@@ -81,7 +75,7 @@ export const removeAssets = async (
   const existingAssetIds = await bulk.getAssetIds(dto.parentId, dto.assetIds);
   const allowedAssetIds = canAlwaysRemove.has(dto.parentId)
     ? existingAssetIds
-    : await checkAccess(access, { auth, permission: Permission.ASSET_SHARE, ids: existingAssetIds });
+    : await checkAccess(access, { auth, permission: Permission.AssetShare, ids: existingAssetIds });
 
   const results: BulkIdResponseDto[] = [];
   for (const assetId of dto.assetIds) {
@@ -111,7 +105,7 @@ export const removeAssets = async (
 
 export type PartnerIdOptions = {
   userId: string;
-  repository: IPartnerRepository;
+  repository: PartnerRepository;
   /** only include partners with `inTimeline: true` */
   timelineEnabled?: boolean;
 };
@@ -139,7 +133,7 @@ export const getMyPartnerIds = async ({ userId, repository, timelineEnabled }: P
   return [...partnerIds];
 };
 
-export type AssetHookRepositories = { asset: IAssetRepository; event: IEventRepository };
+export type AssetHookRepositories = { asset: AssetRepository; event: EventRepository };
 
 export const onBeforeLink = async (
   { asset: assetRepository, event: eventRepository }: AssetHookRepositories,
@@ -149,16 +143,16 @@ export const onBeforeLink = async (
   if (!motionAsset) {
     throw new BadRequestException('Live photo video not found');
   }
-  if (motionAsset.type !== AssetType.VIDEO) {
+  if (motionAsset.type !== AssetType.Video) {
     throw new BadRequestException('Live photo video must be a video');
   }
   if (motionAsset.ownerId !== userId) {
     throw new BadRequestException('Live photo video does not belong to the user');
   }
 
-  if (motionAsset?.isVisible) {
-    await assetRepository.update({ id: livePhotoVideoId, isVisible: false });
-    await eventRepository.emit('asset.hide', { assetId: motionAsset.id, userId });
+  if (motionAsset && motionAsset.visibility === AssetVisibility.Timeline) {
+    await assetRepository.update({ id: livePhotoVideoId, visibility: AssetVisibility.Hidden });
+    await eventRepository.emit('AssetHide', { assetId: motionAsset.id, userId });
   }
 };
 
@@ -180,10 +174,10 @@ export const onBeforeUnlink = async (
 
 export const onAfterUnlink = async (
   { asset: assetRepository, event: eventRepository }: AssetHookRepositories,
-  { userId, livePhotoVideoId }: { userId: string; livePhotoVideoId: string },
+  { userId, livePhotoVideoId, visibility }: { userId: string; livePhotoVideoId: string; visibility: AssetVisibility },
 ) => {
-  await assetRepository.update({ id: livePhotoVideoId, isVisible: true });
-  await eventRepository.emit('asset.show', { assetId: livePhotoVideoId, userId });
+  await assetRepository.update({ id: livePhotoVideoId, visibility });
+  await eventRepository.emit('AssetShow', { assetId: livePhotoVideoId, userId });
 };
 
 export function mapToUploadFile(file: ImmichFile): UploadFile {

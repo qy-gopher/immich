@@ -1,20 +1,17 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:immich_mobile/interfaces/auth_api.interface.dart';
 import 'package:immich_mobile/models/auth/login_response.model.dart';
 import 'package:immich_mobile/providers/api.provider.dart';
 import 'package:immich_mobile/repositories/api.repository.dart';
 import 'package:immich_mobile/services/api.service.dart';
 import 'package:openapi/api.dart';
 
-final authApiRepositoryProvider =
-    Provider((ref) => AuthApiRepository(ref.watch(apiServiceProvider)));
+final authApiRepositoryProvider = Provider((ref) => AuthApiRepository(ref.watch(apiServiceProvider)));
 
-class AuthApiRepository extends ApiRepository implements IAuthApiRepository {
+class AuthApiRepository extends ApiRepository {
   final ApiService _apiService;
 
   AuthApiRepository(this._apiService);
 
-  @override
   Future<void> changePassword(String newPassword) async {
     await _apiService.usersApi.updateMyUser(
       UserUpdateMeDto(
@@ -23,7 +20,6 @@ class AuthApiRepository extends ApiRepository implements IAuthApiRepository {
     );
   }
 
-  @override
   Future<LoginResponse> login(String email, String password) async {
     final loginResponseDto = await checkNull(
       _apiService.authenticationApi.login(
@@ -37,11 +33,8 @@ class AuthApiRepository extends ApiRepository implements IAuthApiRepository {
     return _mapLoginReponse(loginResponseDto);
   }
 
-  @override
   Future<void> logout() async {
-    await _apiService.authenticationApi
-        .logout()
-        .timeout(const Duration(seconds: 7));
+    await _apiService.authenticationApi.logout().timeout(const Duration(seconds: 7));
   }
 
   _mapLoginReponse(LoginResponseDto dto) {
@@ -54,5 +47,22 @@ class AuthApiRepository extends ApiRepository implements IAuthApiRepository {
       userEmail: dto.userEmail,
       userId: dto.userId,
     );
+  }
+
+  Future<bool> unlockPinCode(String pinCode) async {
+    try {
+      await _apiService.authenticationApi.unlockAuthSession(SessionUnlockDto(pinCode: pinCode));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> setupPinCode(String pinCode) {
+    return _apiService.authenticationApi.setupPinCode(PinCodeSetupDto(pinCode: pinCode));
+  }
+
+  Future<void> lockPinCode() {
+    return _apiService.authenticationApi.lockAuthSession();
   }
 }

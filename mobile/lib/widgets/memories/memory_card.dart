@@ -26,9 +26,9 @@ class MemoryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       color: Colors.black,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(25.0),
-        side: const BorderSide(
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(25.0)),
+        side: BorderSide(
           color: Colors.black,
           width: 1.0,
         ),
@@ -45,11 +45,9 @@ class MemoryCard extends StatelessWidget {
               BoxFit fit = BoxFit.contain;
               if (asset.width != null && asset.height != null) {
                 final aspectRatio = asset.width! / asset.height!;
-                final phoneAspectRatio =
-                    constraints.maxWidth / constraints.maxHeight;
+                final phoneAspectRatio = constraints.maxWidth / constraints.maxHeight;
                 // Look for a 25% difference in either direction
-                if (phoneAspectRatio * .75 < aspectRatio &&
-                    phoneAspectRatio * 1.25 > aspectRatio) {
+                if (phoneAspectRatio * .75 < aspectRatio && phoneAspectRatio * 1.25 > aspectRatio) {
                   // Cover to look nice if we have nearly the same aspect ratio
                   fit = BoxFit.cover;
                 }
@@ -75,11 +73,12 @@ class MemoryCard extends StatelessWidget {
                       key: ValueKey(asset.id),
                       asset: asset,
                       showControls: false,
+                      playbackDelayFactor: 2,
                       image: ImmichImage(
                         asset,
                         width: context.width,
                         height: context.height,
-                        fit: fit,
+                        fit: BoxFit.contain,
                       ),
                     ),
                   ),
@@ -125,7 +124,7 @@ class _BlurredBackdrop extends HookWidget {
           ),
         ),
         child: Container(
-          color: Colors.black.withOpacity(0.2),
+          color: Colors.black.withValues(alpha: 0.2),
         ),
       );
     } else {
@@ -146,7 +145,7 @@ class _BlurredBackdrop extends HookWidget {
             ),
           ),
           child: Container(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha: 0.2),
           ),
         ),
       );

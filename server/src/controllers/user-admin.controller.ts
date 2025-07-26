@@ -1,5 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { AssetStatsDto, AssetStatsResponseDto } from 'src/dtos/asset.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
 import { UserPreferencesResponseDto, UserPreferencesUpdateDto } from 'src/dtos/user-preferences.dto';
 import {
@@ -20,25 +21,25 @@ export class UserAdminController {
   constructor(private service: UserAdminService) {}
 
   @Get()
-  @Authenticated({ permission: Permission.ADMIN_USER_READ, admin: true })
+  @Authenticated({ permission: Permission.AdminUserRead, admin: true })
   searchUsersAdmin(@Auth() auth: AuthDto, @Query() dto: UserAdminSearchDto): Promise<UserAdminResponseDto[]> {
     return this.service.search(auth, dto);
   }
 
   @Post()
-  @Authenticated({ permission: Permission.ADMIN_USER_CREATE, admin: true })
+  @Authenticated({ permission: Permission.AdminUserCreate, admin: true })
   createUserAdmin(@Body() createUserDto: UserAdminCreateDto): Promise<UserAdminResponseDto> {
     return this.service.create(createUserDto);
   }
 
   @Get(':id')
-  @Authenticated({ permission: Permission.ADMIN_USER_READ, admin: true })
+  @Authenticated({ permission: Permission.AdminUserRead, admin: true })
   getUserAdmin(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto): Promise<UserAdminResponseDto> {
     return this.service.get(auth, id);
   }
 
   @Put(':id')
-  @Authenticated({ permission: Permission.ADMIN_USER_UPDATE, admin: true })
+  @Authenticated({ permission: Permission.AdminUserUpdate, admin: true })
   updateUserAdmin(
     @Auth() auth: AuthDto,
     @Param() { id }: UUIDParamDto,
@@ -48,7 +49,7 @@ export class UserAdminController {
   }
 
   @Delete(':id')
-  @Authenticated({ permission: Permission.ADMIN_USER_DELETE, admin: true })
+  @Authenticated({ permission: Permission.AdminUserDelete, admin: true })
   deleteUserAdmin(
     @Auth() auth: AuthDto,
     @Param() { id }: UUIDParamDto,
@@ -57,14 +58,24 @@ export class UserAdminController {
     return this.service.delete(auth, id, dto);
   }
 
+  @Get(':id/statistics')
+  @Authenticated({ permission: Permission.AdminUserRead, admin: true })
+  getUserStatisticsAdmin(
+    @Auth() auth: AuthDto,
+    @Param() { id }: UUIDParamDto,
+    @Query() dto: AssetStatsDto,
+  ): Promise<AssetStatsResponseDto> {
+    return this.service.getStatistics(auth, id, dto);
+  }
+
   @Get(':id/preferences')
-  @Authenticated({ permission: Permission.ADMIN_USER_READ, admin: true })
+  @Authenticated({ permission: Permission.AdminUserRead, admin: true })
   getUserPreferencesAdmin(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto): Promise<UserPreferencesResponseDto> {
     return this.service.getPreferences(auth, id);
   }
 
   @Put(':id/preferences')
-  @Authenticated({ permission: Permission.ADMIN_USER_UPDATE, admin: true })
+  @Authenticated({ permission: Permission.AdminUserUpdate, admin: true })
   updateUserPreferencesAdmin(
     @Auth() auth: AuthDto,
     @Param() { id }: UUIDParamDto,
@@ -74,7 +85,8 @@ export class UserAdminController {
   }
 
   @Post(':id/restore')
-  @Authenticated({ permission: Permission.ADMIN_USER_DELETE, admin: true })
+  @Authenticated({ permission: Permission.AdminUserDelete, admin: true })
+  @HttpCode(HttpStatus.OK)
   restoreUserAdmin(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto): Promise<UserAdminResponseDto> {
     return this.service.restore(auth, id);
   }

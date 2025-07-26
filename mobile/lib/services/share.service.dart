@@ -10,8 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'api.service.dart';
 
-final shareServiceProvider =
-    Provider((ref) => ShareService(ref.watch(apiServiceProvider)));
+final shareServiceProvider = Provider((ref) => ShareService(ref.watch(apiServiceProvider)));
 
 class ShareService {
   final ApiService _apiService;
@@ -30,15 +29,14 @@ class ShareService {
       for (var asset in assets) {
         if (asset.isLocal) {
           // Prefer local assets to share
-          File? f = await asset.local!.file;
+          File? f = await asset.local!.originFile;
           downloadedXFiles.add(XFile(f!.path));
         } else if (asset.isRemote) {
           // Download remote asset otherwise
           final tempDir = await getTemporaryDirectory();
           final fileName = asset.fileName;
           final tempFile = await File('${tempDir.path}/$fileName').create();
-          final res = await _apiService.assetsApi
-              .downloadAssetWithHttpInfo(asset.remoteId!);
+          final res = await _apiService.assetsApi.downloadAssetWithHttpInfo(asset.remoteId!);
 
           if (res.statusCode != 200) {
             _log.severe(

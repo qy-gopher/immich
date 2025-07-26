@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'package:immich_mobile/widgets/photo_view/src/controller/photo_view_controller.dart';
 import 'package:immich_mobile/widgets/photo_view/src/controller/photo_view_scalestate_controller.dart';
 import 'package:immich_mobile/widgets/photo_view/src/core/photo_view_core.dart';
@@ -10,11 +9,15 @@ import 'package:immich_mobile/widgets/photo_view/src/utils/photo_view_hero_attri
 
 export 'src/controller/photo_view_controller.dart';
 export 'src/controller/photo_view_scalestate_controller.dart';
-export 'src/core/photo_view_gesture_detector.dart'
-    show PhotoViewGestureDetectorScope, PhotoViewPageViewScrollPhysics;
+export 'src/core/photo_view_gesture_detector.dart' show PhotoViewGestureDetectorScope, PhotoViewPageViewScrollPhysics;
 export 'src/photo_view_computed_scale.dart';
 export 'src/photo_view_scale_state.dart';
 export 'src/utils/photo_view_hero_attributes.dart';
+
+typedef PhotoViewControllerCallback = PhotoViewControllerBase Function();
+typedef PhotoViewControllerCallbackBuilder = void Function(
+  PhotoViewControllerCallback photoViewMethod,
+);
 
 /// A [StatefulWidget] that contains all the photo view rendering elements.
 ///
@@ -239,8 +242,11 @@ class PhotoView extends StatefulWidget {
     this.wantKeepAlive = false,
     this.gaplessPlayback = false,
     this.heroAttributes,
+    this.onPageBuild,
+    this.controllerCallbackBuilder,
     this.scaleStateChangedCallback,
     this.enableRotation = false,
+    this.semanticLabel,
     this.controller,
     this.scaleStateController,
     this.maxScale,
@@ -260,6 +266,7 @@ class PhotoView extends StatefulWidget {
     this.tightMode,
     this.filterQuality,
     this.disableGestures,
+    this.disableScaleGestures,
     this.errorBuilder,
     this.enablePanAlways,
   })  : child = null,
@@ -278,6 +285,8 @@ class PhotoView extends StatefulWidget {
     this.backgroundDecoration,
     this.wantKeepAlive = false,
     this.heroAttributes,
+    this.onPageBuild,
+    this.controllerCallbackBuilder,
     this.scaleStateChangedCallback,
     this.enableRotation = false,
     this.controller,
@@ -298,9 +307,11 @@ class PhotoView extends StatefulWidget {
     this.gestureDetectorBehavior,
     this.tightMode,
     this.filterQuality,
+    this.disableScaleGestures,
     this.disableGestures,
     this.enablePanAlways,
-  })  : errorBuilder = null,
+  })  : semanticLabel = null,
+        errorBuilder = null,
         imageProvider = null,
         gaplessPlayback = false,
         loadingBuilder = null,
@@ -325,6 +336,11 @@ class PhotoView extends StatefulWidget {
   /// `true`  -> keeps the state
   final bool wantKeepAlive;
 
+  /// A Semantic description of the image.
+  ///
+  /// Used to provide a description of the image to TalkBack on Android, and VoiceOver on iOS.
+  final String? semanticLabel;
+
   /// This is used to continue showing the old image (`true`), or briefly show
   /// nothing (`false`), when the `imageProvider` changes. By default it's set
   /// to `false`.
@@ -337,6 +353,12 @@ class PhotoView extends StatefulWidget {
   /// Defines the size of the scaling base of the image inside [PhotoView],
   /// by default it is `MediaQuery.of(context).size`.
   final Size? customSize;
+
+  // Called when a new PhotoView widget is built
+  final ValueChanged<PhotoViewControllerBase>? onPageBuild;
+
+  // Called from the parent during page change to get the new controller
+  final PhotoViewControllerCallbackBuilder? controllerCallbackBuilder;
 
   /// A [Function] to be called whenever the scaleState changes, this happens when the user double taps the content ou start to pinch-in.
   final ValueChanged<PhotoViewScaleState>? scaleStateChangedCallback;
@@ -419,6 +441,9 @@ class PhotoView extends StatefulWidget {
   // Useful when custom gesture detector is used in child widget.
   final bool? disableGestures;
 
+  /// Mirror to [PhotoView.disableGestures]
+  final bool? disableScaleGestures;
+
   /// Enable pan the widget even if it's smaller than the hole parent widget.
   /// Useful when you want to drag a widget without restrictions.
   final bool? enablePanAlways;
@@ -435,8 +460,7 @@ class PhotoView extends StatefulWidget {
   }
 }
 
-class _PhotoViewState extends State<PhotoView>
-    with AutomaticKeepAliveClientMixin {
+class _PhotoViewState extends State<PhotoView> with AutomaticKeepAliveClientMixin {
   // image retrieval
 
   // controller
@@ -452,6 +476,7 @@ class _PhotoViewState extends State<PhotoView>
     if (widget.controller == null) {
       _controlledController = true;
       _controller = PhotoViewController();
+      widget.onPageBuild?.call(_controller);
     } else {
       _controlledController = false;
       _controller = widget.controller!;
@@ -466,6 +491,8 @@ class _PhotoViewState extends State<PhotoView>
     }
 
     _scaleStateController.outputScaleStateStream.listen(scaleStateListener);
+    // Pass a ref to the method back to the gallery so it can fetch the controller on page changes
+    widget.controllerCallbackBuilder?.call(_controllerGetter);
   }
 
   @override
@@ -474,6 +501,7 @@ class _PhotoViewState extends State<PhotoView>
       if (!_controlledController) {
         _controlledController = true;
         _controller = PhotoViewController();
+        widget.onPageBuild?.call(_controller);
       }
     } else {
       _controlledController = false;
@@ -509,6 +537,8 @@ class _PhotoViewState extends State<PhotoView>
     }
   }
 
+  PhotoViewControllerBase _controllerGetter() => _controller;
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -518,8 +548,7 @@ class _PhotoViewState extends State<PhotoView>
         BoxConstraints constraints,
       ) {
         final computedOuterSize = widget.customSize ?? constraints.biggest;
-        final backgroundDecoration = widget.backgroundDecoration ??
-            const BoxDecoration(color: Colors.black);
+        final backgroundDecoration = widget.backgroundDecoration ?? const BoxDecoration(color: Colors.black);
 
         return widget._isCustomChild
             ? CustomChildWrapper(
@@ -547,6 +576,7 @@ class _PhotoViewState extends State<PhotoView>
                 tightMode: widget.tightMode,
                 filterQuality: widget.filterQuality,
                 disableGestures: widget.disableGestures,
+                disableScaleGestures: widget.disableScaleGestures,
                 enablePanAlways: widget.enablePanAlways,
                 child: widget.child,
               )
@@ -554,6 +584,7 @@ class _PhotoViewState extends State<PhotoView>
                 imageProvider: widget.imageProvider!,
                 loadingBuilder: widget.loadingBuilder,
                 backgroundDecoration: backgroundDecoration,
+                semanticLabel: widget.semanticLabel,
                 gaplessPlayback: widget.gaplessPlayback,
                 heroAttributes: widget.heroAttributes,
                 scaleStateChangedCallback: widget.scaleStateChangedCallback,
@@ -577,6 +608,7 @@ class _PhotoViewState extends State<PhotoView>
                 tightMode: widget.tightMode,
                 filterQuality: widget.filterQuality,
                 disableGestures: widget.disableGestures,
+                disableScaleGestures: widget.disableScaleGestures,
                 errorBuilder: widget.errorBuilder,
                 enablePanAlways: widget.enablePanAlways,
                 index: widget.index,
@@ -590,21 +622,12 @@ class _PhotoViewState extends State<PhotoView>
 }
 
 /// The default [ScaleStateCycle]
-PhotoViewScaleState defaultScaleStateCycle(PhotoViewScaleState actual) {
-  switch (actual) {
-    case PhotoViewScaleState.initial:
-      return PhotoViewScaleState.covering;
-    case PhotoViewScaleState.covering:
-      return PhotoViewScaleState.originalSize;
-    case PhotoViewScaleState.originalSize:
-      return PhotoViewScaleState.initial;
-    case PhotoViewScaleState.zoomedIn:
-    case PhotoViewScaleState.zoomedOut:
-      return PhotoViewScaleState.initial;
-    default:
-      return PhotoViewScaleState.initial;
-  }
-}
+PhotoViewScaleState defaultScaleStateCycle(PhotoViewScaleState actual) => switch (actual) {
+      PhotoViewScaleState.initial => PhotoViewScaleState.covering,
+      PhotoViewScaleState.covering => PhotoViewScaleState.originalSize,
+      PhotoViewScaleState.originalSize => PhotoViewScaleState.initial,
+      PhotoViewScaleState.zoomedIn || PhotoViewScaleState.zoomedOut => PhotoViewScaleState.initial,
+    };
 
 /// A type definition for a [Function] that receives the actual [PhotoViewScaleState] and returns the next one
 /// It is used internally to walk in the "doubletap gesture cycle".
@@ -631,7 +654,8 @@ typedef PhotoViewImageTapDownCallback = Function(
 typedef PhotoViewImageDragStartCallback = Function(
   BuildContext context,
   DragStartDetails details,
-  PhotoViewControllerValue controllerValue,
+  PhotoViewControllerBase controllerValue,
+  PhotoViewScaleStateController scaleStateController,
 );
 
 /// A type definition for a callback when the user drags

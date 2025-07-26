@@ -1,11 +1,12 @@
 import 'package:flutter_udid/flutter_udid.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:immich_mobile/domain/models/store.model.dart';
 import 'package:immich_mobile/entities/store.entity.dart';
 
-final deviceServiceProvider = Provider((ref) => DeviceService());
+final deviceServiceProvider = Provider((ref) => const DeviceService());
 
 class DeviceService {
-  DeviceService();
+  const DeviceService();
 
   createDeviceId() {
     return FlutterUdid.consistentUdid;

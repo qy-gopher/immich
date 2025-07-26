@@ -4,7 +4,39 @@ The Immich mobile app is a Flutter-based solution leveraging the Isar Database f
 
 ## Setup
 
-You must set up Flutter toolchain in your machine before you can perform any of the development.
+1. Setup Flutter toolchain using FVM.
+2. Run `flutter pub get` to install the dependencies.
+3. Run `make translation` to generate the translation file.
+4. Run `fvm flutter run` to start the app.
+
+## Translation
+
+To add a new translation text, enter the key-value pair in the `i18n/en.json` in the root of the immich project. Then, from the `mobile/` directory, run
+
+```bash
+make translation
+```
+
+## Static Analysis
+
+The following checks of static analysis must pass for a contribution to the mobile app to be valid:
+
+```bash
+dart format lib
+dart analyze
+dart run custom_lint
+dcm analyze lib
+```
+
+[DCM](https://dcm.dev/) is a vendor tool that needs to be downloaded manually to run locally.
+Immich was provided an open source license. 
+To use it, it is important that you do not have an active free tier license (can be verified with `dcm license`).
+If you have write-access to the Immich repository directly, running dcm in your clone should just work.
+If you are working on a clone of a fork, you need to connect to the main Immich repository as remote first:
+
+```bash
+git remote add immich git@github.com:immich-app/immich.git
+```
 
 ## Immich-Flutter Directory Structure
 
@@ -15,6 +47,7 @@ Below are the directory inside the `lib` directory:
 - `extensions`: Extensions enhancing various existing functionalities within the app, such as asset_extensions.dart, string_extensions.dart, and more.
 
 - `module_template`: Provides a template structure for different modules within the app, including subdivisions like models, providers, services, UI, and views.
+
   - `models`: Placeholder for storing module-specific models.
   - `providers`: Section to define module-specific Riverpod providers.
   - `services`: Houses services tailored to the module's functionality.

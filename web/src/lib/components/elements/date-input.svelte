@@ -8,24 +8,23 @@
     id?: string;
     name?: string;
     placeholder?: string;
+    autofocus?: boolean;
+    onkeydown?: (e: KeyboardEvent) => void;
   }
 
-  let { type, value = $bindable(), max = undefined, ...rest }: Props = $props();
+  let { type, value = $bindable(), max = undefined, onkeydown, ...rest }: Props = $props();
 
   let fallbackMax = $derived(type === 'date' ? '9999-12-31' : '9999-12-31T23:59');
 
   // Updating `value` directly causes the date input to reset itself or
   // interfere with user changes.
-  let updatedValue = $state<string>();
-  $effect(() => {
-    updatedValue = value;
-  });
+  let updatedValue = $derived(value);
 </script>
 
 <input
   {...rest}
   {type}
-  {value}
+  bind:value
   max={max || fallbackMax}
   oninput={(e) => (updatedValue = e.currentTarget.value)}
   onblur={() => (value = updatedValue)}
@@ -33,5 +32,6 @@
     if (e.key === 'Enter') {
       value = updatedValue;
     }
+    onkeydown?.(e);
   }}
 />

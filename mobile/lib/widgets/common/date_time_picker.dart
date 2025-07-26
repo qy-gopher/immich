@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/duration_extensions.dart';
+import 'package:immich_mobile/widgets/common/dropdown_search_menu.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/timezone.dart';
 
@@ -24,7 +25,7 @@ Future<String?> showDateTimePicker({
 }
 
 String _getFormattedOffset(int offsetInMilli, tz.Location location) {
-  return "${location.name} (UTC${Duration(milliseconds: offsetInMilli).formatAsOffset()})";
+  return "${location.name} (${Duration(milliseconds: offsetInMilli).formatAsOffset()})";
 }
 
 class _DateTimePicker extends HookWidget {
@@ -72,11 +73,7 @@ class _DateTimePicker extends HookWidget {
 
   // returns a list of location<name> along with it's offset in duration
   List<_TimeZoneOffset> getAllTimeZones() {
-    return tz.timeZoneDatabase.locations.values
-        .where((l) => !l.currentTimeZone.abbreviation.contains("0"))
-        .map(_TimeZoneOffset.fromLocation)
-        .sorted()
-        .toList();
+    return tz.timeZoneDatabase.locations.values.map(_TimeZoneOffset.fromLocation).sorted().toList();
   }
 
   @override
@@ -125,91 +122,88 @@ class _DateTimePicker extends HookWidget {
     }
 
     void popWithDateTime() {
-      final formattedDateTime =
-          DateFormat("yyyy-MM-dd'T'HH:mm:ss").format(date.value);
-      final dtWithOffset = formattedDateTime +
-          Duration(milliseconds: tzOffset.value.offsetInMilliseconds)
-              .formatAsOffset();
+      final formattedDateTime = DateFormat("yyyy-MM-dd'T'HH:mm:ss").format(date.value);
+      final dtWithOffset =
+          formattedDateTime + Duration(milliseconds: tzOffset.value.offsetInMilliseconds).formatAsOffset();
       context.pop(dtWithOffset);
     }
 
-    return LayoutBuilder(
-      builder: (context, constraint) => AlertDialog(
-        contentPadding:
-            const EdgeInsets.symmetric(vertical: 32, horizontal: 18),
-        actions: [
-          TextButton(
-            onPressed: () => context.pop(),
-            child: Text(
-              "action_common_cancel",
-              style: context.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: context.colorScheme.error,
+    return AlertDialog(
+      contentPadding: const EdgeInsets.symmetric(vertical: 32, horizontal: 18),
+      actions: [
+        TextButton(
+          onPressed: () => context.pop(),
+          child: Text(
+            "cancel",
+            style: context.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: context.colorScheme.error,
+            ),
+          ).tr(),
+        ),
+        TextButton(
+          onPressed: popWithDateTime,
+          child: Text(
+            "action_common_update",
+            style: context.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: context.primaryColor,
+            ),
+          ).tr(),
+        ),
+      ],
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "date_and_time",
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ).tr(),
+          const SizedBox(height: 32),
+          ListTile(
+            tileColor: context.colorScheme.surfaceContainerHighest,
+            shape: ShapeBorder.lerp(
+              const RoundedRectangleBorder(
+                borderRadius: BorderRadius.all(
+                  Radius.circular(10),
+                ),
               ),
+              const RoundedRectangleBorder(
+                borderRadius: BorderRadius.all(
+                  Radius.circular(10),
+                ),
+              ),
+              1,
+            ),
+            trailing: Icon(
+              Icons.edit_outlined,
+              size: 18,
+              color: context.primaryColor,
+            ),
+            title: Text(
+              DateFormat("dd-MM-yyyy hh:mm a").format(date.value),
+              style: context.textTheme.bodyMedium,
             ).tr(),
+            onTap: pickDate,
           ),
-          TextButton(
-            onPressed: popWithDateTime,
-            child: Text(
-              "action_common_update",
-              style: context.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: context.primaryColor,
-              ),
-            ).tr(),
+          const SizedBox(height: 24),
+          DropdownSearchMenu(
+            trailingIcon: Icon(
+              Icons.arrow_drop_down,
+              color: context.primaryColor,
+            ),
+            hintText: "timezone".tr(),
+            label: const Text('timezone').tr(),
+            textStyle: context.textTheme.bodyMedium,
+            onSelected: (value) => tzOffset.value = value,
+            initialSelection: tzOffset.value,
+            dropdownMenuEntries: menuEntries,
           ),
         ],
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "edit_date_time_dialog_date_time",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ).tr(),
-            const SizedBox(height: 32),
-            ListTile(
-              tileColor: context.colorScheme.surfaceContainerHighest,
-              shape: ShapeBorder.lerp(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                1,
-              ),
-              trailing: Icon(
-                Icons.edit_outlined,
-                size: 18,
-                color: context.primaryColor,
-              ),
-              title: Text(
-                DateFormat("dd-MM-yyyy hh:mm a").format(date.value),
-                style: context.textTheme.bodyMedium,
-              ).tr(),
-              onTap: pickDate,
-            ),
-            const SizedBox(height: 24),
-            DropdownMenu(
-              width: 275,
-              menuHeight: 300,
-              trailingIcon: Icon(
-                Icons.arrow_drop_down,
-                color: context.primaryColor,
-              ),
-              hintText: "edit_date_time_dialog_timezone".tr(),
-              label: const Text('edit_date_time_dialog_timezone').tr(),
-              textStyle: context.textTheme.bodyMedium,
-              onSelected: (value) => tzOffset.value = value!,
-              initialSelection: tzOffset.value,
-              dropdownMenuEntries: menuEntries,
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -246,19 +240,15 @@ class _TimeZoneOffset implements Comparable<_TimeZoneOffset> {
   }
 
   @override
-  String toString() =>
-      '_TimeZoneOffset(display: $display, location: $location)';
+  String toString() => '_TimeZoneOffset(display: $display, location: $location)';
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
 
-    return other is _TimeZoneOffset &&
-        other.display == display &&
-        other.offsetInMilliseconds == offsetInMilliseconds;
+    return other is _TimeZoneOffset && other.display == display && other.offsetInMilliseconds == offsetInMilliseconds;
   }
 
   @override
-  int get hashCode =>
-      display.hashCode ^ offsetInMilliseconds.hashCode ^ location.hashCode;
+  int get hashCode => display.hashCode ^ offsetInMilliseconds.hashCode ^ location.hashCode;
 }

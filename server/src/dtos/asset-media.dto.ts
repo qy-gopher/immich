@@ -1,17 +1,21 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayNotEmpty, IsArray, IsEnum, IsNotEmpty, IsString, ValidateNested } from 'class-validator';
-import { Optional, ValidateBoolean, ValidateDate, ValidateUUID } from 'src/validation';
+import { ArrayNotEmpty, IsArray, IsNotEmpty, IsString, ValidateNested } from 'class-validator';
+import { AssetVisibility } from 'src/enum';
+import { Optional, ValidateBoolean, ValidateDate, ValidateEnum, ValidateUUID } from 'src/validation';
 
 export enum AssetMediaSize {
+  /**
+   * An full-sized image extracted/converted from non-web-friendly formats like RAW/HIF.
+   * or otherwise the original image itself.
+   */
+  FULLSIZE = 'fullsize',
   PREVIEW = 'preview',
   THUMBNAIL = 'thumbnail',
 }
 
 export class AssetMediaOptionsDto {
-  @Optional()
-  @IsEnum(AssetMediaSize)
-  @ApiProperty({ enumName: 'AssetMediaSize', enum: AssetMediaSize })
+  @ValidateEnum({ enum: AssetMediaSize, name: 'AssetMediaSize', optional: true })
   size?: AssetMediaSize;
 }
 
@@ -40,6 +44,10 @@ class AssetMediaBase {
   @IsString()
   duration?: string;
 
+  @Optional()
+  @IsString()
+  filename?: string;
+
   // The properties below are added to correctly generate the API docs
   // and client SDKs. Validation should be handled in the controller.
   @ApiProperty({ type: 'string', format: 'binary' })
@@ -50,11 +58,8 @@ export class AssetMediaCreateDto extends AssetMediaBase {
   @ValidateBoolean({ optional: true })
   isFavorite?: boolean;
 
-  @ValidateBoolean({ optional: true })
-  isArchived?: boolean;
-
-  @ValidateBoolean({ optional: true })
-  isVisible?: boolean;
+  @ValidateEnum({ enum: AssetVisibility, name: 'AssetVisibility', optional: true })
+  visibility?: AssetVisibility;
 
   @ValidateUUID({ optional: true })
   livePhotoVideoId?: string;

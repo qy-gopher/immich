@@ -1,15 +1,14 @@
 <script lang="ts">
-  import CircleIconButton from '$lib/components/elements/buttons/circle-icon-button.svelte';
   import {
     NotificationType,
     notificationController,
   } from '$lib/components/shared-components/notification/notification';
   import { getAlbumInfo, removeAssetFromAlbum, type AlbumResponseDto } from '@immich/sdk';
+  import { IconButton, modalManager } from '@immich/ui';
   import { mdiDeleteOutline, mdiImageRemoveOutline } from '@mdi/js';
+  import { t } from 'svelte-i18n';
   import MenuOption from '../../shared-components/context-menu/menu-option.svelte';
   import { getAssetControlContext } from '../asset-select-control-bar.svelte';
-  import { dialogController } from '$lib/components/shared-components/dialog/dialog';
-  import { t } from 'svelte-i18n';
 
   interface Props {
     album: AlbumResponseDto;
@@ -22,8 +21,8 @@
   const { getAssets, clearSelect } = getAssetControlContext();
 
   const removeFromAlbum = async () => {
-    const isConfirmed = await dialogController.show({
-      prompt: $t('remove_assets_album_confirmation', { values: { count: getAssets().size } }),
+    const isConfirmed = await modalManager.showDialog({
+      prompt: $t('remove_assets_album_confirmation', { values: { count: getAssets().length } }),
     });
 
     if (!isConfirmed) {
@@ -61,5 +60,12 @@
 {#if menuItem}
   <MenuOption text={$t('remove_from_album')} icon={mdiImageRemoveOutline} onClick={removeFromAlbum} />
 {:else}
-  <CircleIconButton title={$t('remove_from_album')} icon={mdiDeleteOutline} onclick={removeFromAlbum} />
+  <IconButton
+    shape="round"
+    color="secondary"
+    variant="ghost"
+    aria-label={$t('remove_from_album')}
+    icon={mdiDeleteOutline}
+    onclick={removeFromAlbum}
+  />
 {/if}

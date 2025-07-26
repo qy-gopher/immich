@@ -4,6 +4,7 @@ import 'dart:math';
 import 'dart:ui' as ui;
 
 import 'package:auto_route/auto_route.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart' hide Store;
@@ -12,14 +13,15 @@ import 'package:immich_mobile/entities/asset.entity.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/scroll_extensions.dart';
 import 'package:immich_mobile/pages/common/download_panel.dart';
-import 'package:immich_mobile/pages/common/native_video_viewer.page.dart';
 import 'package:immich_mobile/pages/common/gallery_stacked_children.dart';
+import 'package:immich_mobile/pages/common/native_video_viewer.page.dart';
 import 'package:immich_mobile/providers/app_settings.provider.dart';
 import 'package:immich_mobile/providers/asset_viewer/asset_stack.provider.dart';
 import 'package:immich_mobile/providers/asset_viewer/current_asset.provider.dart';
 import 'package:immich_mobile/providers/asset_viewer/is_motion_video_playing.provider.dart';
 import 'package:immich_mobile/providers/asset_viewer/show_controls.provider.dart';
 import 'package:immich_mobile/providers/asset_viewer/video_player_value_provider.dart';
+import 'package:immich_mobile/providers/cast.provider.dart';
 import 'package:immich_mobile/providers/haptic_feedback.provider.dart';
 import 'package:immich_mobile/services/app_settings.service.dart';
 import 'package:immich_mobile/widgets/asset_grid/asset_grid_data_structure.dart';
@@ -62,6 +64,14 @@ class GalleryViewerPage extends HookConsumerWidget {
     final currentIndex = useValueNotifier(initialIndex);
     final loadAsset = renderList.loadAsset;
     final isPlayingMotionVideo = ref.watch(isPlayingMotionVideoProvider);
+    final isCasting = ref.watch(castProvider.select((c) => c.isCasting));
+
+    final videoPlayerKeys = useRef<Map<int, GlobalKey>>({});
+
+    GlobalKey getVideoPlayerKey(int id) {
+      videoPlayerKeys.value.putIfAbsent(id, () => GlobalKey());
+      return videoPlayerKeys.value[id]!;
+    }
 
     Future<void> precacheNextImage(int index) async {
       if (!context.mounted) {
@@ -110,6 +120,36 @@ class GalleryViewerPage extends HookConsumerWidget {
       },
       const [],
     );
+
+    useEffect(() {
+      final asset = loadAsset(currentIndex.value);
+
+      if (asset.isRemote) {
+        ref.read(castProvider.notifier).loadMediaOld(asset, false);
+      } else {
+        if (isCasting) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) {
+              ref.read(castProvider.notifier).stop();
+              context.scaffoldMessenger.showSnackBar(
+                SnackBar(
+                  duration: const Duration(seconds: 1),
+                  content: Text(
+                    "local_asset_cast_failed".tr(),
+                    style: context.textTheme.bodyLarge?.copyWith(
+                      color: context.primaryColor,
+                    ),
+                  ),
+                ),
+              );
+            }
+          });
+        }
+      }
+      return null;
+    }, [
+      ref.watch(castProvider).isCasting,
+    ]);
 
     void showInfo() {
       final asset = ref.read(currentAssetProvider);
@@ -196,9 +236,9 @@ class GalleryViewerPage extends HookConsumerWidget {
       });
     });
 
-    PhotoViewGalleryPageOptions buildImage(BuildContext context, Asset asset) {
+    PhotoViewGalleryPageOptions buildImage(Asset asset) {
       return PhotoViewGalleryPageOptions(
-        onDragStart: (_, details, __) {
+        onDragStart: (_, details, __, ___) {
           localPosition.value = details.localPosition;
         },
         onDragUpdate: (_, details, __) {
@@ -216,7 +256,8 @@ class GalleryViewerPage extends HookConsumerWidget {
         heroAttributes: _getHeroAttributes(asset),
         filterQuality: FilterQuality.high,
         tightMode: true,
-        minScale: PhotoViewComputedScale.contained,
+        initialScale: PhotoViewComputedScale.contained * 0.99,
+        minScale: PhotoViewComputedScale.contained * 0.99,
         errorBuilder: (context, error, stackTrace) => ImmichImage(
           asset,
           fit: BoxFit.contain,
@@ -225,23 +266,20 @@ class GalleryViewerPage extends HookConsumerWidget {
     }
 
     PhotoViewGalleryPageOptions buildVideo(BuildContext context, Asset asset) {
-      // This key is to prevent the video player from being re-initialized during the hero animation
-      final key = GlobalKey();
       return PhotoViewGalleryPageOptions.customChild(
-        onDragStart: (_, details, __) =>
-            localPosition.value = details.localPosition,
+        onDragStart: (_, details, __, ___) => localPosition.value = details.localPosition,
         onDragUpdate: (_, details, __) => handleSwipeUpDown(details),
         heroAttributes: _getHeroAttributes(asset),
         filterQuality: FilterQuality.high,
-        initialScale: 1.0,
+        initialScale: PhotoViewComputedScale.contained * 0.99,
         maxScale: 1.0,
-        minScale: 1.0,
+        minScale: PhotoViewComputedScale.contained * 0.99,
         basePosition: Alignment.center,
         child: SizedBox(
           width: context.width,
           height: context.height,
           child: NativeVideoViewerPage(
-            key: key,
+            key: getVideoPlayerKey(asset.id),
             asset: asset,
             image: Image(
               key: ValueKey(asset),
@@ -262,25 +300,24 @@ class GalleryViewerPage extends HookConsumerWidget {
 
     PhotoViewGalleryPageOptions buildAsset(BuildContext context, int index) {
       var newAsset = loadAsset(index);
+
       final stackId = newAsset.stackId;
       if (stackId != null && currentIndex.value == index) {
-        final stackElements =
-            ref.read(assetStackStateProvider(newAsset.stackId!));
+        final stackElements = ref.read(assetStackStateProvider(newAsset.stackId!));
         if (stackIndex.value < stackElements.length) {
           newAsset = stackElements.elementAt(stackIndex.value);
         }
       }
 
       if (newAsset.isImage && !isPlayingMotionVideo) {
-        return buildImage(context, newAsset);
+        return buildImage(newAsset);
       }
       return buildVideo(context, newAsset);
     }
 
     return PopScope(
       // Change immersive mode back to normal "edgeToEdge" mode
-      onPopInvokedWithResult: (didPop, _) =>
-          SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge),
+      onPopInvokedWithResult: (didPop, _) => SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge),
       child: Scaffold(
         backgroundColor: Colors.black,
         body: Stack(
@@ -295,8 +332,7 @@ class GalleryViewerPage extends HookConsumerWidget {
 
                 if (asset.isImage && !ref.read(isPlayingMotionVideoProvider)) {
                   isZoomed.value = state != PhotoViewScaleState.initial;
-                  ref.read(showControlsProvider.notifier).show =
-                      !isZoomed.value;
+                  ref.read(showControlsProvider.notifier).show = !isZoomed.value;
                 }
               },
               gaplessPlayback: true,
@@ -330,7 +366,7 @@ class GalleryViewerPage extends HookConsumerWidget {
                   ),
               itemCount: totalAssets.value,
               scrollDirection: Axis.horizontal,
-              onPageChanged: (value) {
+              onPageChanged: (value, _) {
                 final next = currentIndex.value < value ? value + 1 : value - 1;
 
                 ref.read(hapticFeedbackProvider.notifier).selectionClick();
@@ -349,6 +385,30 @@ class GalleryViewerPage extends HookConsumerWidget {
                 Timer(const Duration(milliseconds: 400), () {
                   precacheNextImage(next);
                 });
+
+                context.scaffoldMessenger.hideCurrentSnackBar();
+
+                // send image to casting if the server has it
+                if (newAsset.isRemote) {
+                  ref.read(castProvider.notifier).loadMediaOld(newAsset, false);
+                } else {
+                  context.scaffoldMessenger.clearSnackBars();
+
+                  if (isCasting) {
+                    ref.read(castProvider.notifier).stop();
+                    context.scaffoldMessenger.showSnackBar(
+                      SnackBar(
+                        duration: const Duration(seconds: 2),
+                        content: Text(
+                          "local_asset_cast_failed".tr(),
+                          style: context.textTheme.bodyLarge?.copyWith(
+                            color: context.primaryColor,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                }
               },
               builder: buildAsset,
             ),
@@ -390,9 +450,7 @@ class GalleryViewerPage extends HookConsumerWidget {
   @pragma('vm:prefer-inline')
   PhotoViewHeroAttributes _getHeroAttributes(Asset asset) {
     return PhotoViewHeroAttributes(
-      tag: asset.isInDb
-          ? asset.id + heroOffset
-          : '${asset.remoteId}-$heroOffset',
+      tag: asset.isInDb ? asset.id + heroOffset : '${asset.remoteId}-$heroOffset',
       transitionOnUserGestures: true,
     );
   }

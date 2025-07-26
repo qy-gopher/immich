@@ -11,6 +11,8 @@
   import { onMount } from 'svelte';
   import { websocketEvents } from '$lib/stores/websocket';
   import SingleGridRow from '$lib/components/shared-components/single-grid-row.svelte';
+  import Icon from '$lib/components/elements/icon.svelte';
+  import { mdiHeart } from '@mdi/js';
 
   interface Props {
     data: PageData;
@@ -46,14 +48,14 @@
         <p class="mb-4 font-medium dark:text-immich-dark-fg">{$t('people')}</p>
         <a
           href={AppRoute.PEOPLE}
-          class="pr-4 text-sm font-medium hover:text-immich-primary dark:text-immich-dark-fg dark:hover:text-immich-dark-primary"
+          class="pe-4 text-sm font-medium hover:text-immich-primary dark:text-immich-dark-fg dark:hover:text-immich-dark-primary"
           draggable="false">{$t('view_all')}</a
         >
       </div>
       <SingleGridRow class="grid md:grid-auto-fill-28 grid-auto-fill-20 gap-x-4">
         {#snippet children({ itemCount })}
           {#each people.slice(0, itemCount) as person (person.id)}
-            <a href="{AppRoute.PEOPLE}/{person.id}" class="text-center">
+            <a href="{AppRoute.PEOPLE}/{person.id}" class="text-center relative">
               <ImageThumbnail
                 circle
                 shadow
@@ -61,6 +63,11 @@
                 altText={person.name}
                 widthStyle="100%"
               />
+              {#if person.isFavorite}
+                <div class="absolute top-2 start-2">
+                  <Icon path={mdiHeart} size="24" class="text-white" />
+                </div>
+              {/if}
               <p class="mt-2 text-ellipsis text-sm font-medium dark:text-white">{person.name}</p>
             </a>
           {/each}
@@ -75,7 +82,7 @@
         <p class="mb-4 font-medium dark:text-immich-dark-fg">{$t('places')}</p>
         <a
           href={AppRoute.PLACES}
-          class="pr-4 text-sm font-medium hover:text-immich-primary dark:text-immich-dark-fg dark:hover:text-immich-dark-primary"
+          class="pe-4 text-sm font-medium hover:text-immich-primary dark:text-immich-dark-fg dark:hover:text-immich-dark-primary"
           draggable="false">{$t('view_all')}</a
         >
       </div>

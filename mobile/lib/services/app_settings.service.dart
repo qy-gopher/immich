@@ -1,4 +1,5 @@
 import 'package:immich_mobile/constants/colors.dart';
+import 'package:immich_mobile/domain/models/store.model.dart';
 import 'package:immich_mobile/entities/store.entity.dart';
 
 enum AppSettingsEnum<T> {
@@ -60,9 +61,15 @@ enum AppSettingsEnum<T> {
     0,
   ),
   advancedTroubleshooting<bool>(StoreKey.advancedTroubleshooting, null, false),
+  manageLocalMediaAndroid<bool>(StoreKey.manageLocalMediaAndroid, null, false),
   logLevel<int>(StoreKey.logLevel, null, 5), // Level.INFO = 5
   preferRemoteImage<bool>(StoreKey.preferRemoteImage, null, false),
   loopVideo<bool>(StoreKey.loopVideo, "loopVideo", true),
+  loadOriginalVideo<bool>(
+    StoreKey.loadOriginalVideo,
+    "loadOriginalVideo",
+    false,
+  ),
   mapThemeMode<int>(StoreKey.mapThemeMode, null, 0),
   mapShowFavoriteOnly<bool>(StoreKey.mapShowFavoriteOnly, null, false),
   mapIncludeArchived<bool>(StoreKey.mapIncludeArchived, null, false),
@@ -78,6 +85,13 @@ enum AppSettingsEnum<T> {
   enableHapticFeedback<bool>(StoreKey.enableHapticFeedback, null, true),
   syncAlbums<bool>(StoreKey.syncAlbums, null, false),
   autoEndpointSwitching<bool>(StoreKey.autoEndpointSwitching, null, false),
+  photoManagerCustomFilter<bool>(
+    StoreKey.photoManagerCustomFilter,
+    null,
+    true,
+  ),
+  betaTimeline<bool>(StoreKey.betaTimeline, null, false),
+  enableBackup<bool>(StoreKey.enableBackup, null, false),
   ;
 
   const AppSettingsEnum(this.storeKey, this.hiveKey, this.defaultValue);
@@ -88,11 +102,12 @@ enum AppSettingsEnum<T> {
 }
 
 class AppSettingsService {
+  const AppSettingsService();
   T getSetting<T>(AppSettingsEnum<T> setting) {
     return Store.get(setting.storeKey, setting.defaultValue);
   }
 
-  void setSetting<T>(AppSettingsEnum<T> setting, T value) {
-    Store.put(setting.storeKey, value);
+  Future<void> setSetting<T>(AppSettingsEnum<T> setting, T value) {
+    return Store.put(setting.storeKey, value);
   }
 }

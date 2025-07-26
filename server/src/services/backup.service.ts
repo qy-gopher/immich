@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { default as path } from 'node:path';
+import { DateTime } from 'luxon';
+import path from 'node:path';
 import semver from 'semver';
+import { serverVersion } from 'src/constants';
 import { StorageCore } from 'src/cores/storage.core';
 import { OnEvent, OnJob } from 'src/decorators';
-import { ImmichWorker, StorageFolder } from 'src/enum';
-import { DatabaseLock } from 'src/interfaces/database.interface';
-import { ArgOf } from 'src/interfaces/event.interface';
-import { JobName, JobStatus, QueueName } from 'src/interfaces/job.interface';
+import { DatabaseLock, ImmichWorker, JobName, JobStatus, QueueName, StorageFolder } from 'src/enum';
+import { ArgOf } from 'src/repositories/event.repository';
 import { BaseService } from 'src/services/base.service';
 import { handlePromiseError } from 'src/utils/misc';
 
@@ -14,26 +14,26 @@ import { handlePromiseError } from 'src/utils/misc';
 export class BackupService extends BaseService {
   private backupLock = false;
 
-  @OnEvent({ name: 'config.init', workers: [ImmichWorker.MICROSERVICES] })
+  @OnEvent({ name: 'ConfigInit', workers: [ImmichWorker.Microservices] })
   async onConfigInit({
     newConfig: {
       backup: { database },
     },
-  }: ArgOf<'config.init'>) {
+  }: ArgOf<'ConfigInit'>) {
     this.backupLock = await this.databaseRepository.tryLock(DatabaseLock.BackupDatabase);
 
     if (this.backupLock) {
       this.cronRepository.create({
         name: 'backupDatabase',
         expression: database.cronExpression,
-        onTick: () => handlePromiseError(this.jobRepository.queue({ name: JobName.BACKUP_DATABASE }), this.logger),
+        onTick: () => handlePromiseError(this.jobRepository.queue({ name: JobName.DatabaseBackup }), this.logger),
         start: database.enabled,
       });
     }
   }
 
-  @OnEvent({ name: 'config.update', server: true })
-  onConfigUpdate({ newConfig: { backup } }: ArgOf<'config.update'>) {
+  @OnEvent({ name: 'ConfigUpdate', server: true })
+  onConfigUpdate({ newConfig: { backup } }: ArgOf<'ConfigUpdate'>) {
     if (!this.backupLock) {
       return;
     }
@@ -51,7 +51,7 @@ export class BackupService extends BaseService {
       backup: { database: config },
     } = await this.getConfig({ withCache: false });
 
-    const backupsFolder = StorageCore.getBaseFolder(StorageFolder.BACKUPS);
+    const backupsFolder = StorageCore.getBaseFolder(StorageFolder.Backups);
     const files = await this.storageRepository.readdir(backupsFolder);
     const failedBackups = files.filter((file) => file.match(/immich-db-backup-\d+\.sql\.gz\.tmp$/));
     const backups = files
@@ -68,13 +68,11 @@ export class BackupService extends BaseService {
     this.logger.debug(`Database Backup Cleanup Finished, deleted ${toDelete.length} backups`);
   }
 
-  @OnJob({ name: JobName.BACKUP_DATABASE, queue: QueueName.BACKUP_DATABASE })
+  @OnJob({ name: JobName.DatabaseBackup, queue: QueueName.BackupDatabase })
   async handleBackupDatabase(): Promise<JobStatus> {
     this.logger.debug(`Database Backup Started`);
-
-    const {
-      database: { config },
-    } = this.configRepository.getEnv();
+    const { database } = this.configRepository.getEnv();
+    const config = database.config;
 
     const isUrlConnection = config.connectionType === 'url';
 
@@ -92,19 +90,17 @@ export class BackupService extends BaseService {
         ];
 
     databaseParams.push('--clean', '--if-exists');
-
-    const backupFilePath = path.join(
-      StorageCore.getBaseFolder(StorageFolder.BACKUPS),
-      `immich-db-backup-${Date.now()}.sql.gz.tmp`,
-    );
-
     const databaseVersion = await this.databaseRepository.getPostgresVersion();
+    const backupFilePath = path.join(
+      StorageCore.getBaseFolder(StorageFolder.Backups),
+      `immich-db-backup-${DateTime.now().toFormat("yyyyLLdd'T'HHmmss")}-v${serverVersion.toString()}-pg${databaseVersion.split(' ')[0]}.sql.gz.tmp`,
+    );
     const databaseSemver = semver.coerce(databaseVersion);
     const databaseMajorVersion = databaseSemver?.major;
 
     if (!databaseMajorVersion || !databaseSemver || !semver.satisfies(databaseSemver, '>=14.0.0 <18.0.0')) {
       this.logger.error(`Database Backup Failure: Unsupported PostgreSQL version: ${databaseVersion}`);
-      return JobStatus.FAILED;
+      return JobStatus.Failed;
     }
 
     this.logger.log(`Database Backup Starting. Database Version: ${databaseMajorVersion}`);
@@ -178,11 +174,11 @@ export class BackupService extends BaseService {
       await this.storageRepository
         .unlink(backupFilePath)
         .catch((error) => this.logger.error('Failed to delete failed backup file', error));
-      return JobStatus.FAILED;
+      throw error;
     }
 
     this.logger.log(`Database Backup Success`);
     await this.cleanupDatabaseBackups();
-    return JobStatus.SUCCESS;
+    return JobStatus.Success;
   }
 }

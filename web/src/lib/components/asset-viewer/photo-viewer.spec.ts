@@ -7,6 +7,14 @@ import { sharedLinkFactory } from '@test-data/factories/shared-link-factory';
 import { render } from '@testing-library/svelte';
 import type { MockInstance } from 'vitest';
 
+class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+globalThis.ResizeObserver = ResizeObserver;
+
 vi.mock('$lib/utils', async (originalImport) => {
   const meta = await originalImport<typeof import('$lib/utils')>();
   return {
@@ -23,6 +31,29 @@ describe('PhotoViewer component', () => {
   beforeAll(() => {
     getAssetOriginalUrlSpy = vi.spyOn(utils, 'getAssetOriginalUrl');
     getAssetThumbnailUrlSpy = vi.spyOn(utils, 'getAssetThumbnailUrl');
+
+    vi.stubGlobal('cast', {
+      framework: {
+        CastState: {
+          NO_DEVICES_AVAILABLE: 'NO_DEVICES_AVAILABLE',
+        },
+        RemotePlayer: vi.fn().mockImplementation(() => ({})),
+        RemotePlayerEventType: {
+          ANY_CHANGE: 'anyChanged',
+        },
+        RemotePlayerController: vi.fn().mockImplementation(() => ({ addEventListener: vi.fn() })),
+        CastContext: {
+          getInstance: vi.fn().mockImplementation(() => ({ setOptions: vi.fn(), addEventListener: vi.fn() })),
+        },
+        CastContextEventType: {
+          SESSION_STATE_CHANGED: 'sessionstatechanged',
+          CAST_STATE_CHANGED: 'caststatechanged',
+        },
+      },
+    });
+    vi.stubGlobal('chrome', {
+      cast: { media: { PlayerState: { IDLE: 'IDLE' } }, AutoJoinPolicy: { ORIGIN_SCOPED: 'origin_scoped' } },
+    });
   });
 
   beforeEach(() => {
@@ -40,7 +71,7 @@ describe('PhotoViewer component', () => {
     expect(getAssetThumbnailUrlSpy).toBeCalledWith({
       id: asset.id,
       size: AssetMediaSize.Preview,
-      checksum: asset.checksum,
+      cacheKey: asset.thumbhash,
     });
     expect(getAssetOriginalUrlSpy).not.toBeCalled();
   });
@@ -50,7 +81,7 @@ describe('PhotoViewer component', () => {
     render(PhotoViewer, { asset });
 
     expect(getAssetThumbnailUrlSpy).not.toBeCalled();
-    expect(getAssetOriginalUrlSpy).toBeCalledWith({ id: asset.id, checksum: asset.checksum });
+    expect(getAssetOriginalUrlSpy).toBeCalledWith({ id: asset.id, cacheKey: asset.thumbhash });
   });
 
   it('loads original for shared link when download permission is true and showMetadata permission is true', () => {
@@ -59,7 +90,7 @@ describe('PhotoViewer component', () => {
     render(PhotoViewer, { asset, sharedLink });
 
     expect(getAssetThumbnailUrlSpy).not.toBeCalled();
-    expect(getAssetOriginalUrlSpy).toBeCalledWith({ id: asset.id, checksum: asset.checksum });
+    expect(getAssetOriginalUrlSpy).toBeCalledWith({ id: asset.id, cacheKey: asset.thumbhash });
   });
 
   it('not loads original image when shared link download permission is false', () => {
@@ -70,7 +101,7 @@ describe('PhotoViewer component', () => {
     expect(getAssetThumbnailUrlSpy).toBeCalledWith({
       id: asset.id,
       size: AssetMediaSize.Preview,
-      checksum: asset.checksum,
+      cacheKey: asset.thumbhash,
     });
 
     expect(getAssetOriginalUrlSpy).not.toBeCalled();
@@ -84,7 +115,7 @@ describe('PhotoViewer component', () => {
     expect(getAssetThumbnailUrlSpy).toBeCalledWith({
       id: asset.id,
       size: AssetMediaSize.Preview,
-      checksum: asset.checksum,
+      cacheKey: asset.thumbhash,
     });
 
     expect(getAssetOriginalUrlSpy).not.toBeCalled();

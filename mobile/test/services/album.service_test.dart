@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:immich_mobile/entities/backup_album.entity.dart';
 import 'package:immich_mobile/services/album.service.dart';
 import 'package:mocktail/mocktail.dart';
+
+import '../domain/service.mock.dart';
 import '../fixtures/album.stub.dart';
 import '../fixtures/asset.stub.dart';
 import '../fixtures/user.stub.dart';
@@ -29,6 +31,8 @@ void main() {
     albumMediaRepository = MockAlbumMediaRepository();
     albumApiRepository = MockAlbumApiRepository();
 
+    when(() => userService.getMyUser()).thenReturn(UserStub.user1);
+
     when(() => albumRepository.transaction<void>(any())).thenAnswer(
       (call) => (call.positionalArguments.first as Function).call(),
     );
@@ -37,8 +41,8 @@ void main() {
     );
 
     sut = AlbumService(
-      userService,
       syncService,
+      userService,
       entityService,
       albumRepository,
       assetRepository,
@@ -50,28 +54,22 @@ void main() {
 
   group('refreshDeviceAlbums', () {
     test('empty selection with one album in db', () async {
-      when(() => backupRepository.getIdsBySelection(BackupSelection.exclude))
-          .thenAnswer((_) async => []);
-      when(() => backupRepository.getIdsBySelection(BackupSelection.select))
-          .thenAnswer((_) async => []);
+      when(() => backupRepository.getIdsBySelection(BackupSelection.exclude)).thenAnswer((_) async => []);
+      when(() => backupRepository.getIdsBySelection(BackupSelection.select)).thenAnswer((_) async => []);
       when(() => albumMediaRepository.getAll()).thenAnswer((_) async => []);
       when(() => albumRepository.count(local: true)).thenAnswer((_) async => 1);
-      when(() => syncService.removeAllLocalAlbumsAndAssets())
-          .thenAnswer((_) async => true);
+      when(() => syncService.removeAllLocalAlbumsAndAssets()).thenAnswer((_) async => true);
       final result = await sut.refreshDeviceAlbums();
       expect(result, false);
       verify(() => syncService.removeAllLocalAlbumsAndAssets());
     });
 
     test('one selected albums, two on device', () async {
-      when(() => backupRepository.getIdsBySelection(BackupSelection.exclude))
-          .thenAnswer((_) async => []);
+      when(() => backupRepository.getIdsBySelection(BackupSelection.exclude)).thenAnswer((_) async => []);
       when(() => backupRepository.getIdsBySelection(BackupSelection.select))
           .thenAnswer((_) async => [AlbumStub.oneAsset.localId!]);
-      when(() => albumMediaRepository.getAll())
-          .thenAnswer((_) async => [AlbumStub.oneAsset, AlbumStub.twoAsset]);
-      when(() => syncService.syncLocalAlbumAssetsToDb(any(), any()))
-          .thenAnswer((_) async => true);
+      when(() => albumMediaRepository.getAll()).thenAnswer((_) async => [AlbumStub.oneAsset, AlbumStub.twoAsset]);
+      when(() => syncService.syncLocalAlbumAssetsToDb(any(), any())).thenAnswer((_) async => true);
       final result = await sut.refreshDeviceAlbums();
       expect(result, true);
       verify(
@@ -83,9 +81,9 @@ void main() {
 
   group('refreshRemoteAlbums', () {
     test('is working', () async {
-      when(() => userService.refreshUsers()).thenAnswer((_) async => true);
-      when(() => albumApiRepository.getAll(shared: true))
-          .thenAnswer((_) async => [AlbumStub.sharedWithUser]);
+      when(() => syncService.getUsersFromServer()).thenAnswer((_) async => []);
+      when(() => syncService.syncUsersFromServer(any())).thenAnswer((_) async => true);
+      when(() => albumApiRepository.getAll(shared: true)).thenAnswer((_) async => [AlbumStub.sharedWithUser]);
 
       when(() => albumApiRepository.getAll(shared: null))
           .thenAnswer((_) async => [AlbumStub.oneAsset, AlbumStub.twoAsset]);
@@ -99,7 +97,8 @@ void main() {
       ).thenAnswer((_) async => true);
       final result = await sut.refreshRemoteAlbums();
       expect(result, true);
-      verify(() => userService.refreshUsers()).called(1);
+      verify(() => syncService.getUsersFromServer()).called(1);
+      verify(() => syncService.syncUsersFromServer([])).called(1);
       verify(() => albumApiRepository.getAll(shared: true)).called(1);
       verify(() => albumApiRepository.getAll(shared: null)).called(1);
       verify(
@@ -135,8 +134,7 @@ void main() {
         () => albumRepository.create(AlbumStub.oneAsset),
       ).thenAnswer((_) async => AlbumStub.twoAsset);
 
-      final result =
-          await sut.createAlbum("name", [AssetStub.image1], [UserStub.user1]);
+      final result = await sut.createAlbum("name", [AssetStub.image1], [UserStub.user1]);
       expect(result, AlbumStub.twoAsset);
       verify(
         () => albumApiRepository.create(
@@ -156,10 +154,7 @@ void main() {
       when(
         () => albumApiRepository.addAssets(AlbumStub.oneAsset.remoteId!, any()),
       ).thenAnswer(
-        (_) async => (
-          added: [AssetStub.image2.remoteId!],
-          duplicates: [AssetStub.image1.remoteId!]
-        ),
+        (_) async => (added: [AssetStub.image2.remoteId!], duplicates: [AssetStub.image1.remoteId!]),
       );
       when(
         () => albumRepository.get(AlbumStub.oneAsset.id),
@@ -191,8 +186,7 @@ void main() {
   group('addAdditionalUserToAlbum', () {
     test('one added', () async {
       when(
-        () =>
-            albumApiRepository.addUsers(AlbumStub.emptyAlbum.remoteId!, any()),
+        () => albumApiRepository.addUsers(AlbumStub.emptyAlbum.remoteId!, any()),
       ).thenAnswer(
         (_) async => AlbumStub.sharedWithUser,
       );
@@ -200,7 +194,7 @@ void main() {
       when(
         () => albumRepository.addUsers(
           AlbumStub.emptyAlbum,
-          AlbumStub.emptyAlbum.sharedUsers.toList(),
+          AlbumStub.emptyAlbum.sharedUsers.map((u) => u.toDto()).toList(),
         ),
       ).thenAnswer((_) async => AlbumStub.emptyAlbum);
 

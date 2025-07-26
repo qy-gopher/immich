@@ -174,36 +174,20 @@ class _AspectRatioButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    IconData iconData;
-    switch (label) {
-      case 'Free':
-        iconData = Icons.crop_free_rounded;
-        break;
-      case '1:1':
-        iconData = Icons.crop_square_rounded;
-        break;
-      case '16:9':
-        iconData = Icons.crop_16_9_rounded;
-        break;
-      case '3:2':
-        iconData = Icons.crop_3_2_rounded;
-        break;
-      case '7:5':
-        iconData = Icons.crop_7_5_rounded;
-        break;
-      default:
-        iconData = Icons.crop_free_rounded;
-    }
-
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         IconButton(
           icon: Icon(
-            iconData,
-            color: aspectRatio.value == ratio
-                ? context.primaryColor
-                : context.themeData.iconTheme.color,
+            switch (label) {
+              'Free' => Icons.crop_free_rounded,
+              '1:1' => Icons.crop_square_rounded,
+              '16:9' => Icons.crop_16_9_rounded,
+              '3:2' => Icons.crop_3_2_rounded,
+              '7:5' => Icons.crop_7_5_rounded,
+              _ => Icons.crop_free_rounded,
+            },
+            color: aspectRatio.value == ratio ? context.primaryColor : context.themeData.iconTheme.color,
           ),
           onPressed: () {
             cropController.crop = const Rect.fromLTRB(0.1, 0.1, 0.9, 0.9);

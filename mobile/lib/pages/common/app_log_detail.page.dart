@@ -1,15 +1,15 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:immich_mobile/extensions/build_context_extensions.dart';
-import 'package:immich_mobile/entities/logger_message.entity.dart';
 import 'package:flutter/services.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:immich_mobile/domain/models/log.model.dart';
+import 'package:immich_mobile/extensions/build_context_extensions.dart';
 
 @RoutePage()
 class AppLogDetailPage extends HookConsumerWidget {
   const AppLogDetailPage({super.key, required this.logMessage});
 
-  final LoggerMessage logMessage;
+  final LogMessage logMessage;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -60,7 +60,9 @@ class AppLogDetailPage extends HookConsumerWidget {
             Container(
               decoration: BoxDecoration(
                 color: context.colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(15.0),
+                borderRadius: const BorderRadius.all(
+                  Radius.circular(15.0),
+                ),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(8.0),
@@ -99,7 +101,9 @@ class AppLogDetailPage extends HookConsumerWidget {
             Container(
               decoration: BoxDecoration(
                 color: context.colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(15.0),
+                borderRadius: const BorderRadius.all(
+                  Radius.circular(15.0),
+                ),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(8.0),
@@ -126,14 +130,12 @@ class AppLogDetailPage extends HookConsumerWidget {
         child: ListView(
           children: [
             buildTextWithCopyButton("MESSAGE", logMessage.message),
-            if (logMessage.details != null)
-              buildTextWithCopyButton("DETAILS", logMessage.details.toString()),
-            if (logMessage.context1 != null)
-              buildLogContext1(logMessage.context1.toString()),
-            if (logMessage.context2 != null)
+            if (logMessage.error != null) buildTextWithCopyButton("DETAILS", logMessage.error.toString()),
+            if (logMessage.logger != null) buildLogContext1(logMessage.logger.toString()),
+            if (logMessage.stack != null)
               buildTextWithCopyButton(
                 "STACK TRACE",
-                logMessage.context2.toString(),
+                logMessage.stack.toString(),
               ),
           ],
         ),

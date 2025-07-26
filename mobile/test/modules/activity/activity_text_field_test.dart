@@ -4,11 +4,14 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:immich_mobile/providers/activity.provider.dart';
-import 'package:immich_mobile/widgets/activities/activity_text_field.dart';
-import 'package:immich_mobile/providers/album/current_album.provider.dart';
+import 'package:immich_mobile/domain/models/store.model.dart';
+import 'package:immich_mobile/domain/services/store.service.dart';
 import 'package:immich_mobile/entities/store.entity.dart';
+import 'package:immich_mobile/infrastructure/repositories/store.repository.dart';
+import 'package:immich_mobile/providers/activity.provider.dart';
+import 'package:immich_mobile/providers/album/current_album.provider.dart';
 import 'package:immich_mobile/providers/user.provider.dart';
+import 'package:immich_mobile/widgets/activities/activity_text_field.dart';
 import 'package:immich_mobile/widgets/common/user_circle_avatar.dart';
 import 'package:isar/isar.dart';
 import 'package:mocktail/mocktail.dart';
@@ -31,7 +34,7 @@ void main() {
   setUpAll(() async {
     TestUtils.init();
     db = await TestUtils.initIsar();
-    Store.init(db);
+    await StoreService.init(storeRepository: IsarStoreRepository(db));
     Store.put(StoreKey.currentUser, UserStub.admin);
     Store.put(StoreKey.serverEndpoint, '');
   });
@@ -41,8 +44,7 @@ void main() {
     activityMock = MockAlbumActivity();
     overrides = [
       currentAlbumProvider.overrideWith(() => mockCurrentAlbumProvider),
-      albumActivityProvider(AlbumStub.twoAsset.remoteId!)
-          .overrideWith(() => activityMock),
+      albumActivityProvider(AlbumStub.twoAsset.remoteId!).overrideWith(() => activityMock),
     ];
   });
 
@@ -149,8 +151,7 @@ void main() {
       overrides: overrides,
     );
 
-    when(() => activityMock.removeActivity(any()))
-        .thenAnswer((_) => Future.value());
+    when(() => activityMock.removeActivity(any())).thenAnswer((_) => Future.value());
 
     final suffixIcon = find.byType(IconButton);
     await tester.tap(suffixIcon);

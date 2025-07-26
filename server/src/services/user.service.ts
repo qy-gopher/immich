@@ -1,19 +1,20 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Updateable } from 'kysely';
 import { DateTime } from 'luxon';
 import { SALT_ROUNDS } from 'src/constants';
 import { StorageCore } from 'src/cores/storage.core';
 import { OnJob } from 'src/decorators';
 import { AuthDto } from 'src/dtos/auth.dto';
 import { LicenseKeyDto, LicenseResponseDto } from 'src/dtos/license.dto';
+import { OnboardingDto, OnboardingResponseDto } from 'src/dtos/onboarding.dto';
 import { UserPreferencesResponseDto, UserPreferencesUpdateDto, mapPreferences } from 'src/dtos/user-preferences.dto';
 import { CreateProfileImageResponseDto } from 'src/dtos/user-profile.dto';
 import { UserAdminResponseDto, UserResponseDto, UserUpdateMeDto, mapUser, mapUserAdmin } from 'src/dtos/user.dto';
-import { UserMetadataEntity } from 'src/entities/user-metadata.entity';
-import { UserEntity } from 'src/entities/user.entity';
-import { CacheControl, StorageFolder, UserMetadataKey } from 'src/enum';
-import { JobName, JobOf, JobStatus, QueueName } from 'src/interfaces/job.interface';
-import { UserFindOptions } from 'src/interfaces/user.interface';
+import { CacheControl, JobName, JobStatus, QueueName, StorageFolder, UserMetadataKey } from 'src/enum';
+import { UserFindOptions } from 'src/repositories/user.repository';
+import { UserTable } from 'src/schema/tables/user.table';
 import { BaseService } from 'src/services/base.service';
+import { JobOf, UserMetadataItem } from 'src/types';
 import { ImmichFileResponse } from 'src/utils/file';
 import { getPreferences, getPreferencesPartial, mergePreferences } from 'src/utils/preferences';
 
@@ -22,16 +23,24 @@ export class UserService extends BaseService {
   async search(auth: AuthDto): Promise<UserResponseDto[]> {
     const config = await this.getConfig({ withCache: false });
 
-    let users: UserEntity[] = [auth.user];
+    let users;
     if (auth.user.isAdmin || config.server.publicUsers) {
       users = await this.userRepository.getList({ withDeleted: false });
+    } else {
+      const authUser = await this.userRepository.get(auth.user.id, {});
+      users = authUser ? [authUser] : [];
     }
 
     return users.map((user) => mapUser(user));
   }
 
-  getMe(auth: AuthDto): UserAdminResponseDto {
-    return mapUserAdmin(auth.user);
+  async getMe(auth: AuthDto): Promise<UserAdminResponseDto> {
+    const user = await this.userRepository.get(auth.user.id, {});
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    return mapUserAdmin(user);
   }
 
   async updateMe({ user }: AuthDto, dto: UserUpdateMeDto): Promise<UserAdminResponseDto> {
@@ -42,9 +51,10 @@ export class UserService extends BaseService {
       }
     }
 
-    const update: Partial<UserEntity> = {
+    const update: Updateable<UserTable> = {
       email: dto.email,
       name: dto.name,
+      avatarColor: dto.avatarColor,
     };
 
     if (dto.password) {
@@ -58,20 +68,21 @@ export class UserService extends BaseService {
     return mapUserAdmin(updatedUser);
   }
 
-  getMyPreferences({ user }: AuthDto): UserPreferencesResponseDto {
-    const preferences = getPreferences(user);
-    return mapPreferences(preferences);
+  async getMyPreferences(auth: AuthDto): Promise<UserPreferencesResponseDto> {
+    const metadata = await this.userRepository.getMetadata(auth.user.id);
+    return mapPreferences(getPreferences(metadata));
   }
 
-  async updateMyPreferences({ user }: AuthDto, dto: UserPreferencesUpdateDto) {
-    const preferences = mergePreferences(user, dto);
+  async updateMyPreferences(auth: AuthDto, dto: UserPreferencesUpdateDto) {
+    const metadata = await this.userRepository.getMetadata(auth.user.id);
+    const updated = mergePreferences(getPreferences(metadata), dto);
 
-    await this.userRepository.upsertMetadata(user.id, {
-      key: UserMetadataKey.PREFERENCES,
-      value: getPreferencesPartial(user, preferences),
+    await this.userRepository.upsertMetadata(auth.user.id, {
+      key: UserMetadataKey.Preferences,
+      value: getPreferencesPartial(updated),
     });
 
-    return mapPreferences(preferences);
+    return mapPreferences(updated);
   }
 
   async get(id: string): Promise<UserResponseDto> {
@@ -88,7 +99,7 @@ export class UserService extends BaseService {
     });
 
     if (oldpath !== '') {
-      await this.jobRepository.queue({ name: JobName.DELETE_FILES, data: { files: [oldpath] } });
+      await this.jobRepository.queue({ name: JobName.FileDelete, data: { files: [oldpath] } });
     }
 
     return {
@@ -104,7 +115,7 @@ export class UserService extends BaseService {
       throw new BadRequestException("Can't delete a missing profile Image");
     }
     await this.userRepository.update(auth.user.id, { profileImagePath: '', profileChangedAt: new Date() });
-    await this.jobRepository.queue({ name: JobName.DELETE_FILES, data: { files: [user.profileImagePath] } });
+    await this.jobRepository.queue({ name: JobName.FileDelete, data: { files: [user.profileImagePath] } });
   }
 
   async getProfileImage(id: string): Promise<ImmichFileResponse> {
@@ -116,22 +127,24 @@ export class UserService extends BaseService {
     return new ImmichFileResponse({
       path: user.profileImagePath,
       contentType: 'image/jpeg',
-      cacheControl: CacheControl.NONE,
+      cacheControl: CacheControl.None,
     });
   }
 
-  getLicense({ user }: AuthDto): LicenseResponseDto {
-    const license = user.metadata.find(
-      (item): item is UserMetadataEntity<UserMetadataKey.LICENSE> => item.key === UserMetadataKey.LICENSE,
+  async getLicense(auth: AuthDto): Promise<LicenseResponseDto> {
+    const metadata = await this.userRepository.getMetadata(auth.user.id);
+
+    const license = metadata.find(
+      (item): item is UserMetadataItem<UserMetadataKey.License> => item.key === UserMetadataKey.License,
     );
     if (!license) {
       throw new NotFoundException();
     }
-    return license.value;
+    return { ...license.value, activatedAt: new Date(license.value.activatedAt) };
   }
 
   async deleteLicense({ user }: AuthDto): Promise<void> {
-    await this.userRepository.deleteMetadata(user.id, UserMetadataKey.LICENSE);
+    await this.userRepository.deleteMetadata(user.id, UserMetadataKey.License);
   }
 
   async setLicense(auth: AuthDto, license: LicenseKeyDto): Promise<LicenseResponseDto> {
@@ -157,61 +170,85 @@ export class UserService extends BaseService {
       throw new BadRequestException('Invalid license key');
     }
 
-    const licenseData = {
-      ...license,
-      activatedAt: new Date(),
-    };
+    const activatedAt = new Date();
 
     await this.userRepository.upsertMetadata(auth.user.id, {
-      key: UserMetadataKey.LICENSE,
-      value: licenseData,
+      key: UserMetadataKey.License,
+      value: { ...license, activatedAt: activatedAt.toISOString() },
     });
 
-    return licenseData;
+    return { ...license, activatedAt };
   }
 
-  @OnJob({ name: JobName.USER_SYNC_USAGE, queue: QueueName.BACKGROUND_TASK })
+  async getOnboarding(auth: AuthDto): Promise<OnboardingResponseDto> {
+    const metadata = await this.userRepository.getMetadata(auth.user.id);
+
+    const onboardingData = metadata.find(
+      (item): item is UserMetadataItem<UserMetadataKey.Onboarding> => item.key === UserMetadataKey.Onboarding,
+    )?.value;
+
+    if (!onboardingData) {
+      return { isOnboarded: false };
+    }
+
+    return {
+      isOnboarded: onboardingData.isOnboarded,
+    };
+  }
+
+  async deleteOnboarding({ user }: AuthDto): Promise<void> {
+    await this.userRepository.deleteMetadata(user.id, UserMetadataKey.Onboarding);
+  }
+
+  async setOnboarding(auth: AuthDto, onboarding: OnboardingDto): Promise<OnboardingResponseDto> {
+    await this.userRepository.upsertMetadata(auth.user.id, {
+      key: UserMetadataKey.Onboarding,
+      value: {
+        isOnboarded: onboarding.isOnboarded,
+      },
+    });
+
+    return {
+      isOnboarded: onboarding.isOnboarded,
+    };
+  }
+
+  @OnJob({ name: JobName.UserSyncUsage, queue: QueueName.BackgroundTask })
   async handleUserSyncUsage(): Promise<JobStatus> {
     await this.userRepository.syncUsage();
-    return JobStatus.SUCCESS;
+    return JobStatus.Success;
   }
 
-  @OnJob({ name: JobName.USER_DELETE_CHECK, queue: QueueName.BACKGROUND_TASK })
+  @OnJob({ name: JobName.UserDeleteCheck, queue: QueueName.BackgroundTask })
   async handleUserDeleteCheck(): Promise<JobStatus> {
-    const users = await this.userRepository.getDeletedUsers();
     const config = await this.getConfig({ withCache: false });
-    await this.jobRepository.queueAll(
-      users.flatMap((user) =>
-        this.isReadyForDeletion(user, config.user.deleteDelay)
-          ? [{ name: JobName.USER_DELETION, data: { id: user.id } }]
-          : [],
-      ),
-    );
-    return JobStatus.SUCCESS;
+    const users = await this.userRepository.getDeletedAfter(DateTime.now().minus({ days: config.user.deleteDelay }));
+    await this.jobRepository.queueAll(users.map((user) => ({ name: JobName.UserDelete, data: { id: user.id } })));
+    return JobStatus.Success;
   }
 
-  @OnJob({ name: JobName.USER_DELETION, queue: QueueName.BACKGROUND_TASK })
-  async handleUserDelete({ id, force }: JobOf<JobName.USER_DELETION>): Promise<JobStatus> {
+  @OnJob({ name: JobName.UserDelete, queue: QueueName.BackgroundTask })
+  async handleUserDelete({ id, force }: JobOf<JobName.UserDelete>): Promise<JobStatus> {
     const config = await this.getConfig({ withCache: false });
     const user = await this.userRepository.get(id, { withDeleted: true });
     if (!user) {
-      return JobStatus.FAILED;
+      return JobStatus.Failed;
     }
 
     // just for extra protection here
     if (!force && !this.isReadyForDeletion(user, config.user.deleteDelay)) {
       this.logger.warn(`Skipped user that was not ready for deletion: id=${id}`);
-      return JobStatus.SKIPPED;
+      return JobStatus.Skipped;
     }
 
     this.logger.log(`Deleting user: ${user.id}`);
 
     const folders = [
       StorageCore.getLibraryFolder(user),
-      StorageCore.getFolderLocation(StorageFolder.UPLOAD, user.id),
-      StorageCore.getFolderLocation(StorageFolder.PROFILE, user.id),
-      StorageCore.getFolderLocation(StorageFolder.THUMBNAILS, user.id),
-      StorageCore.getFolderLocation(StorageFolder.ENCODED_VIDEO, user.id),
+      StorageCore.getFolderLocation(StorageFolder.Upload, user.id),
+      StorageCore.getFolderLocation(StorageFolder.Profile, user.id),
+      StorageCore.getFolderLocation(StorageFolder.Thumbnails, user.id),
+      StorageCore.getFolderLocation(StorageFolder.EncodedVideo, user.id),
     ];
 
     for (const folder of folders) {
@@ -223,10 +260,10 @@ export class UserService extends BaseService {
     await this.albumRepository.deleteAll(user.id);
     await this.userRepository.delete(user, true);
 
-    return JobStatus.SUCCESS;
+    return JobStatus.Success;
   }
 
-  private isReadyForDeletion(user: UserEntity, deleteDelay: number): boolean {
+  private isReadyForDeletion(user: { id: string; deletedAt?: Date | null }, deleteDelay: number): boolean {
     if (!user.deletedAt) {
       return false;
     }

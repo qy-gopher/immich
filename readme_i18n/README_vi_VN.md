@@ -30,6 +30,7 @@
 <a href="README_nl_NL.md">Nederlands</a>
 <a href="README_tr_TR.md">Türkçe</a>
 <a href="README_zh_CN.md">中文</a>
+<a href="README_uk_UA.md">Українська</a>
 <a href="README_ru_RU.md">Русский</a>
 <a href="README_pt_BR.md">Português Brasileiro</a>
 <a href="README_sv_SE.md">Svenska</a>
@@ -62,9 +63,7 @@
 
 ## Demo
 
-Truy cập bản demo [tại đây](https://demo.immich.app). Bản demo đang chạy trên máy ảo Oracle Free-tier ở Amsterdam với CPU ARM64 lõi tứ 2,4 GHz và RAM 24 GB.
-
-Đối với ứng dụng di động, bạn có thể sử dụng `https://demo.immich.app/api` cho `Server Endpoint URL`
+Truy cập bản demo [tại đây](https://demo.immich.app). Đối với ứng dụng di động, bạn có thể sử dụng `https://demo.immich.app` cho `Server Endpoint URL`
 
 ### Thông tin đăng nhập
 

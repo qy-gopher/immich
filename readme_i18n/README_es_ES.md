@@ -28,6 +28,7 @@
   <a href="README_nl_NL.md">Nederlands</a>
   <a href="README_tr_TR.md">Türkçe</a>
   <a href="README_zh_CN.md">中文</a>
+  <a href="README_uk_UA.md">Українська</a>
   <a href="README_ru_RU.md">Русский</a>
   <a href="README_pt_BR.md">Português Brasileiro</a>
   <a href="README_sv_SE.md">Svenska</a>
@@ -58,18 +59,12 @@ Puedes encontrar la documentación oficial, incluidas las guías de instalación
 
 ## Demo
 
-Puedes acceder a la demostración web en <https://demo.immich.app>
-
-Para la aplicación móvil, puedes usar `https://demo.immich.app/api` en la `URL del servidor`.
+Puedes acceder a la demostración web en <https://demo.immich.app>. Para la aplicación móvil, puedes usar `https://demo.immich.app` en la `URL del servidor`.
 
 ```bash title="Credenciales de la demo"
 Credenciales
 correo: demo@immich.app
 contraseña: demo
-```
-
-```bash
-Especificaciones: Una VM de nivel gratuito de Oracle - Ámsterdam - CPU ARM64 de cuatro núcleos a 2.4 GHz, 24 GB de RAM
 ```
 
 ## Funciones

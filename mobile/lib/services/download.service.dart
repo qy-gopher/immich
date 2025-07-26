@@ -3,15 +3,14 @@ import 'dart:io';
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:immich_mobile/entities/store.entity.dart';
+import 'package:immich_mobile/constants/constants.dart';
+import 'package:immich_mobile/domain/models/store.model.dart';
 import 'package:immich_mobile/entities/asset.entity.dart';
-import 'package:immich_mobile/interfaces/download.interface.dart';
-import 'package:immich_mobile/interfaces/file_media.interface.dart';
+import 'package:immich_mobile/entities/store.entity.dart';
 import 'package:immich_mobile/models/download/livephotos_medatada.model.dart';
 import 'package:immich_mobile/repositories/download.repository.dart';
 import 'package:immich_mobile/repositories/file_media.repository.dart';
 import 'package:immich_mobile/services/api.service.dart';
-import 'package:immich_mobile/utils/download.dart';
 import 'package:logging/logging.dart';
 
 final downloadServiceProvider = Provider(
@@ -22,8 +21,8 @@ final downloadServiceProvider = Provider(
 );
 
 class DownloadService {
-  final IDownloadRepository _downloadRepository;
-  final IFileMediaRepository _fileMediaRepository;
+  final DownloadRepository _downloadRepository;
+  final FileMediaRepository _fileMediaRepository;
   final Logger _log = Logger("DownloadService");
   void Function(TaskStatusUpdate)? onImageDownloadStatus;
   void Function(TaskStatusUpdate)? onVideoDownloadStatus;
@@ -36,8 +35,7 @@ class DownloadService {
   ) {
     _downloadRepository.onImageDownloadStatus = _onImageDownloadCallback;
     _downloadRepository.onVideoDownloadStatus = _onVideoDownloadCallback;
-    _downloadRepository.onLivePhotoDownloadStatus =
-        _onLivePhotoDownloadCallback;
+    _downloadRepository.onLivePhotoDownloadStatus = _onLivePhotoDownloadCallback;
     _downloadRepository.onTaskProgress = _onTaskProgressCallback;
   }
 
@@ -109,10 +107,8 @@ class DownloadService {
       return false;
     }
 
-    final imageRecord =
-        _findTaskRecord(records, livePhotosId, LivePhotosPart.image);
-    final videoRecord =
-        _findTaskRecord(records, livePhotosId, LivePhotosPart.video);
+    final imageRecord = _findTaskRecord(records, livePhotosId, LivePhotosPart.image);
+    final videoRecord = _findTaskRecord(records, livePhotosId, LivePhotosPart.video);
     final imageFilePath = await imageRecord.task.filePath();
     final videoFilePath = await videoRecord.task.filePath();
 
@@ -127,8 +123,7 @@ class DownloadService {
     } on PlatformException catch (error, stack) {
       // Handle saving MotionPhotos on iOS
       if (error.code == 'PHPhotosErrorDomain (-1)') {
-        final result = await _fileMediaRepository
-            .saveImageWithFile(imageFilePath, title: task.filename);
+        final result = await _fileMediaRepository.saveImageWithFile(imageFilePath, title: task.filename);
         return result != null;
       }
       _log.severe("Error saving live photo", error, stack);
@@ -158,42 +153,50 @@ class DownloadService {
     return await FileDownloader().cancelTaskWithId(id);
   }
 
+  Future<List<bool>> downloadAll(List<Asset> assets) async {
+    return await _downloadRepository.downloadAll(assets.expand(_createDownloadTasks).toList());
+  }
+
   Future<void> download(Asset asset) async {
+    final tasks = _createDownloadTasks(asset);
+    await _downloadRepository.downloadAll(tasks);
+  }
+
+  List<DownloadTask> _createDownloadTasks(Asset asset) {
     if (asset.isImage && asset.livePhotoVideoId != null && Platform.isIOS) {
-      await _downloadRepository.download(
+      return [
         _buildDownloadTask(
           asset.remoteId!,
           asset.fileName,
-          group: downloadGroupLivePhoto,
+          group: kDownloadGroupLivePhoto,
           metadata: LivePhotosMetadata(
             part: LivePhotosPart.image,
             id: asset.remoteId!,
           ).toJson(),
         ),
-      );
-
-      await _downloadRepository.download(
         _buildDownloadTask(
           asset.livePhotoVideoId!,
-          asset.fileName
-              .toUpperCase()
-              .replaceAll(RegExp(r"\.(JPG|HEIC)$"), '.MOV'),
-          group: downloadGroupLivePhoto,
+          asset.fileName.toUpperCase().replaceAll(RegExp(r"\.(JPG|HEIC)$"), '.MOV'),
+          group: kDownloadGroupLivePhoto,
           metadata: LivePhotosMetadata(
             part: LivePhotosPart.video,
             id: asset.remoteId!,
           ).toJson(),
         ),
-      );
-    } else {
-      await _downloadRepository.download(
-        _buildDownloadTask(
-          asset.remoteId!,
-          asset.fileName,
-          group: asset.isImage ? downloadGroupImage : downloadGroupVideo,
-        ),
-      );
+      ];
     }
+
+    if (asset.remoteId == null) {
+      return [];
+    }
+
+    return [
+      _buildDownloadTask(
+        asset.remoteId!,
+        asset.fileName,
+        group: asset.isImage ? kDownloadGroupImage : kDownloadGroupVideo,
+      ),
+    ];
   }
 
   DownloadTask _buildDownloadTask(

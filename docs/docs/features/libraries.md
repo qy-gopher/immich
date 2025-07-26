@@ -37,7 +37,7 @@ To validate that Immich can reach your external library, start a shell inside th
 
 ### Exclusion Patterns
 
-By default, all files in the import paths will be added to the library. If there are files that should not be added, exclusion patterns can be used to exclude them. Exclusion patterns are glob patterns are matched against the full file path. If a file matches an exclusion pattern, it will not be added to the library. Exclusion patterns can be added in the Scan Settings page for each library. Under the hood, Immich uses the [glob](https://www.npmjs.com/package/glob) package to match patterns, so please refer to [their documentation](https://github.com/isaacs/node-glob#glob-primer) to see what patterns are supported.
+By default, all files in the import paths will be added to the library. If there are files that should not be added, exclusion patterns can be used to exclude them. Exclusion patterns are glob patterns are matched against the full file path. If a file matches an exclusion pattern, it will not be added to the library. Exclusion patterns can be added in the Scan Settings page for each library.
 
 Some basic examples:
 
@@ -48,17 +48,21 @@ Some basic examples:
 
 Special characters such as @ should be escaped, for instance:
 
-- `**/\@eadir/**` will exclude all files in any directory named `@eadir`
+- `**/\@eaDir/**` will exclude all files in any directory named `@eaDir`
+
+:::info
+Internally, Immich uses the [glob](https://www.npmjs.com/package/glob) package to process exclusion patterns, and sometimes those patterns are translated into [Postgres LIKE patterns](https://www.postgresql.org/docs/current/functions-matching.html). The intention is to support basic folder exclusions but we recommend against advanced usage since those can't reliably be translated to the Postgres syntax. Please refer to the [glob documentation](https://github.com/isaacs/node-glob#glob-primer) for a basic overview on glob patterns.
+:::
 
 ### Automatic watching (EXPERIMENTAL)
 
-This feature - currently hidden in the config file - is considered experimental and for advanced users only. If enabled, it will allow automatic watching of the filesystem which means new assets are automatically imported to Immich without needing to rescan.
+This feature is considered experimental and for advanced users only. If enabled, it will allow automatic watching of the filesystem which means new assets are automatically imported to Immich without needing to rescan.
 
 If your photos are on a network drive, automatic file watching likely won't work. In that case, you will have to rely on a periodic library refresh to pull in your changes.
 
 #### Troubleshooting
 
-If you encounter an `ENOSPC` error, you need to increase your file watcher limit. In sysctl, this key is called `fs.inotify.max_user_watched` and has a default value of 8192. Increase this number to a suitable value greater than the number of files you will be watching. Note that Immich has to watch all files in your import paths including any ignored files.
+If you encounter an `ENOSPC` error, you need to increase your file watcher limit. In sysctl, this key is called `fs.inotify.max_user_watches` and has a default value of 8192. Increase this number to a suitable value greater than the number of files you will be watching. Note that Immich has to watch all files in your import paths including any ignored files.
 
 ```
 ERROR [LibraryService] Library watcher for library c69faf55-f96d-4aa0-b83b-2d80cbc27d98 encountered error: Error: ENOSPC: System limit for number of file watchers reached, watch '/media/photo.jpg'
@@ -68,7 +72,7 @@ In rare cases, the library watcher can hang, preventing Immich from starting up.
 
 ### Nightly job
 
-There is an automatic scan job that is scheduled to run once a day. This job also cleans up any libraries stuck in deletion.
+There is an automatic scan job that is scheduled to run once a day. This job also cleans up any libraries stuck in deletion. It is possible to trigger the cleanup by clicking "Scan all libraries" in the library management page.
 
 ## Usage
 
@@ -91,7 +95,7 @@ The `immich-server` container will need access to the gallery. Modify your docke
 +     - /mnt/nas/christmas-trip:/mnt/media/christmas-trip:ro
 +     - /home/user/old-pics:/mnt/media/old-pics:ro
 +     - /mnt/media/videos:/mnt/media/videos:ro
-+     - /mnt/media/videos2:/mnt/media/videos2 # the files in this folder can be deleted, as it does not end with :ro
++     - /mnt/media/videos2:/mnt/media/videos2 # WARNING: Immich will be able to delete the files in this folder, as it does not end with :ro
 +     - "C:/Users/user_name/Desktop/my media:/mnt/media/my-media:ro" # import path in Windows system.
 ```
 
@@ -108,14 +112,16 @@ _Remember to run `docker compose up -d` to register the changes. Make sure you c
 
 These actions must be performed by the Immich administrator.
 
-- Click on Administration -> Libraries
-- Click on Create External Library
+- Click on your avatar in the upper right corner
+- Click on Administration -> External Libraries
+- Click on Create an external library…
 - Select which user owns the library, this can not be changed later
+- Enter `/mnt/media/christmas-trip` then click Add
+- Click on Save
+- Click the drop-down menu on the newly created library
+- Click on Scan
 - Click the drop-down menu on the newly created library
 - Click on Rename Library and rename it to "Christmas Trip"
-- Click Edit Import Paths
-- Click on Add Path
-- Enter `/mnt/media/christmas-trip` then click Add
 
 NOTE: We have to use the `/mnt/media/christmas-trip` path and not the `/mnt/nas/christmas-trip` path since all paths have to be what the Docker containers see.
 
@@ -153,9 +159,7 @@ Within seconds, the assets from the old-pics and videos folders should show up i
 
 Folder view provides an additional view besides the timeline that is similar to a file explorer. It allows you to navigate through the folders and files in the library. This feature is handy for a highly curated and customized external library or a nicely configured storage template.
 
-You can enable this feature under [`Account Settings > Features > Folder View`](https://my.immich.app/user-settings?isOpen=feature+folders)
-
-The UI is currently only available for the web; mobile will come in a subsequent release.
+You can enable this feature under [`Account Settings > Features > Folders`](https://my.immich.app/user-settings?isOpen=feature+folders)
 
 <img src={require('./img/folder-view-1.webp').default} width="100%" title='Folder-view' />
 
@@ -165,7 +169,7 @@ The UI is currently only available for the web; mobile will come in a subsequent
 Only an admin can do this.
 :::
 
-You can define a custom interval for the trigger external library rescan under Administration -> Settings -> Library.  
+You can define a custom interval for the trigger external library rescan under Administration -> Settings -> External Library.  
 You can set the scanning interval using the preset or cron format. For more information you can refer to [Crontab Guru](https://crontab.guru/).
 
 <img src={require('./img/library-custom-scan-interval.webp').default} width="75%" title='Set custom scan interval for external library' />

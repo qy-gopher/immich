@@ -1,31 +1,44 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { AuditEntity } from 'src/entities/audit.entity';
-import { AuditSearch, IAuditRepository } from 'src/interfaces/audit.interface';
-import { In, LessThan, MoreThan, Repository } from 'typeorm';
+import { Kysely } from 'kysely';
+import { InjectKysely } from 'nestjs-kysely';
+import { DummyValue, GenerateSql } from 'src/decorators';
+import { DatabaseAction, EntityType } from 'src/enum';
+import { DB } from 'src/schema';
+
+export interface AuditSearch {
+  action?: DatabaseAction;
+  entityType?: EntityType;
+  userIds: string[];
+}
 
 @Injectable()
-export class AuditRepository implements IAuditRepository {
-  constructor(@InjectRepository(AuditEntity) private repository: Repository<AuditEntity>) {}
+export class AuditRepository {
+  constructor(@InjectKysely() private db: Kysely<DB>) {}
 
+  @GenerateSql({
+    params: [
+      DummyValue.DATE,
+      { action: DatabaseAction.Create, entityType: EntityType.Asset, userIds: [DummyValue.UUID] },
+    ],
+  })
   async getAfter(since: Date, options: AuditSearch): Promise<string[]> {
-    const records = await this.repository
-      .createQueryBuilder('audit')
-      .where({
-        createdAt: MoreThan(since),
-        action: options.action,
-        entityType: options.entityType,
-        ownerId: In(options.userIds),
-      })
+    const records = await this.db
+      .selectFrom('audit')
+      .where('audit.createdAt', '>', since)
+      .$if(!!options.action, (qb) => qb.where('audit.action', '=', options.action!))
+      .$if(!!options.entityType, (qb) => qb.where('audit.entityType', '=', options.entityType!))
+      .where('audit.ownerId', 'in', options.userIds)
       .distinctOn(['audit.entityId', 'audit.entityType'])
-      .orderBy('audit.entityId, audit.entityType, audit.createdAt', 'DESC')
+      .orderBy('audit.entityId', 'desc')
+      .orderBy('audit.entityType', 'desc')
+      .orderBy('audit.createdAt', 'desc')
       .select('audit.entityId')
-      .getMany();
+      .execute();
 
-    return records.map((r) => r.entityId);
+    return records.map(({ entityId }) => entityId);
   }
 
   async removeBefore(before: Date): Promise<void> {
-    await this.repository.delete({ createdAt: LessThan(before) });
+    await this.db.deleteFrom('audit').where('createdAt', '<', before).execute();
   }
 }

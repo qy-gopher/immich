@@ -1,19 +1,22 @@
 import { goto } from '$app/navigation';
-import FormatBoldMessage from '$lib/components/i18n/format-bold-message.svelte';
-import type { InterpolationValues } from '$lib/components/i18n/format-message';
-import { NotificationType, notificationController } from '$lib/components/shared-components/notification/notification';
+import { notificationController, NotificationType } from '$lib/components/shared-components/notification/notification';
 import { AppRoute } from '$lib/constants';
+import { authManager } from '$lib/managers/auth-manager.svelte';
+import { downloadManager } from '$lib/managers/download-manager.svelte';
+import type { TimelineManager } from '$lib/managers/timeline-manager/timeline-manager.svelte';
+import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
+import { assetsSnapshot } from '$lib/managers/timeline-manager/utils.svelte';
 import type { AssetInteraction } from '$lib/stores/asset-interaction.svelte';
-import { assetViewingStore } from '$lib/stores/asset-viewing.store';
-import { isSelectingAllAssets, type AssetStore } from '$lib/stores/assets.store';
-import { downloadManager } from '$lib/stores/download';
+import { isSelectingAllAssets } from '$lib/stores/assets-store.svelte';
 import { preferences } from '$lib/stores/user.store';
-import { downloadRequest, getKey, withError } from '$lib/utils';
-import { createAlbum } from '$lib/utils/album-utils';
+import { downloadRequest, withError } from '$lib/utils';
 import { getByteUnitString } from '$lib/utils/byte-units';
 import { getFormatter } from '$lib/utils/i18n';
+import { navigate } from '$lib/utils/navigation';
 import {
   addAssetsToAlbum as addAssets,
+  AssetVisibility,
+  bulkTagAssets,
   createStack,
   deleteAssets,
   deleteStacks,
@@ -21,7 +24,6 @@ import {
   getBaseUrl,
   getDownloadInfo,
   getStack,
-  tagAssets as tagAllAssets,
   untagAssets,
   updateAsset,
   updateAssets,
@@ -34,7 +36,7 @@ import {
   type UserResponseDto,
 } from '@immich/sdk';
 import { DateTime } from 'luxon';
-import { t, type Translations } from 'svelte-i18n';
+import { t } from 'svelte-i18n';
 import { get } from 'svelte/store';
 import { handleError } from './handle-error';
 
@@ -44,19 +46,23 @@ export const addAssetsToAlbum = async (albumId: string, assetIds: string[], show
     bulkIdsDto: {
       ids: assetIds,
     },
-    key: getKey(),
+    key: authManager.key,
   });
   const count = result.filter(({ success }) => success).length;
+  const duplicateErrorCount = result.filter(({ error }) => error === 'duplicate').length;
   const $t = get(t);
 
   if (showNotification) {
+    let message = $t('assets_cannot_be_added_to_album_count', { values: { count: assetIds.length } });
+    if (count > 0) {
+      message = $t('assets_added_to_album_count', { values: { count } });
+    } else if (duplicateErrorCount > 0) {
+      message = $t('assets_were_part_of_album_count', { values: { count: duplicateErrorCount } });
+    }
     notificationController.show({
       type: NotificationType.Info,
       timeout: 5000,
-      message:
-        count > 0
-          ? $t('assets_added_to_album_count', { values: { count } })
-          : $t('assets_were_part_of_album_count', { values: { count: assetIds.length } }),
+      message,
       button: {
         text: $t('view_album'),
         onClick() {
@@ -76,9 +82,7 @@ export const tagAssets = async ({
   tagIds: string[];
   showNotification?: boolean;
 }) => {
-  for (const tagId of tagIds) {
-    await tagAllAssets({ id: tagId, bulkIdsDto: { ids: assetIds } });
-  }
+  await bulkTagAssets({ tagBulkAssetsDto: { tagIds, assetIds } });
 
   if (showNotification) {
     const $t = await getFormatter();
@@ -115,33 +119,6 @@ export const removeTag = async ({
   return assetIds;
 };
 
-export const addAssetsToNewAlbum = async (albumName: string, assetIds: string[]) => {
-  const album = await createAlbum(albumName, assetIds);
-  if (!album) {
-    return;
-  }
-  const $t = get(t);
-  // for reasons beyond me <ComponentProps<typeof FormatBoldMessage>> doesn't work, even though it's (afaik) exactly this object
-  notificationController.show<{ key: Translations; values: InterpolationValues }>({
-    type: NotificationType.Info,
-    timeout: 5000,
-    component: {
-      type: FormatBoldMessage,
-      props: {
-        key: 'assets_added_to_name_count',
-        values: { count: assetIds.length, name: albumName, hasName: !!albumName },
-      },
-    },
-    button: {
-      text: $t('view_album'),
-      onClick() {
-        return goto(`${AppRoute.ALBUMS}/${album.id}`);
-      },
-    },
-  });
-  return album;
-};
-
 export const downloadAlbum = async (album: AlbumResponseDto) => {
   await downloadArchive(`${album.albumName}.zip`, {
     albumId: album.id,
@@ -162,11 +139,23 @@ export const downloadBlob = (data: Blob, filename: string) => {
   URL.revokeObjectURL(url);
 };
 
+export const downloadUrl = (url: string, filename: string) => {
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+
+  URL.revokeObjectURL(url);
+};
+
 export const downloadArchive = async (fileName: string, options: Omit<DownloadInfoDto, 'archiveSize'>) => {
   const $preferences = get<UserPreferencesResponseDto | undefined>(preferences);
   const dto = { ...options, archiveSize: $preferences?.download.archiveSize };
 
-  const [error, downloadInfo] = await withError(() => getDownloadInfo({ downloadInfoDto: dto, key: getKey() }));
+  const [error, downloadInfo] = await withError(() => getDownloadInfo({ downloadInfoDto: dto, key: authManager.key }));
   if (error) {
     const $t = get(t);
     handleError(error, $t('errors.unable_to_download_files'));
@@ -181,7 +170,7 @@ export const downloadArchive = async (fileName: string, options: Omit<DownloadIn
     const archive = downloadInfo.archives[index];
     const suffix = downloadInfo.archives.length > 1 ? `+${index + 1}` : '';
     const archiveName = fileName.replace('.zip', `${suffix}-${DateTime.now().toFormat('yyyyLLdd_HHmmss')}.zip`);
-    const key = getKey();
+    const key = authManager.key;
 
     let downloadKey = `${archiveName} `;
     if (downloadInfo.archives.length > 1) {
@@ -228,8 +217,8 @@ export const downloadFile = async (asset: AssetResponseDto) => {
   };
 
   if (asset.livePhotoVideoId) {
-    const motionAsset = await getAssetInfo({ id: asset.livePhotoVideoId, key: getKey() });
-    if (!isAndroidMotionVideo(motionAsset) || get(preferences).download.includeEmbeddedVideos) {
+    const motionAsset = await getAssetInfo({ id: asset.livePhotoVideoId, key: authManager.key });
+    if (!isAndroidMotionVideo(motionAsset) || get(preferences)?.download.includeEmbeddedVideos) {
       assets.push({
         filename: motionAsset.originalFileName,
         id: asset.livePhotoVideoId,
@@ -238,33 +227,18 @@ export const downloadFile = async (asset: AssetResponseDto) => {
     }
   }
 
-  for (const { filename, id, size } of assets) {
-    const downloadKey = filename;
-
+  for (const { filename, id } of assets) {
     try {
-      const abort = new AbortController();
-      downloadManager.add(downloadKey, size, abort);
-      const key = getKey();
+      const key = authManager.key;
 
       notificationController.show({
         type: NotificationType.Info,
         message: $t('downloading_asset_filename', { values: { filename: asset.originalFileName } }),
       });
 
-      // TODO use sdk once it supports progress events
-      const { data } = await downloadRequest({
-        method: 'GET',
-        url: getBaseUrl() + `/assets/${id}/original` + (key ? `?key=${key}` : ''),
-        signal: abort.signal,
-        onDownloadProgress: (event) => downloadManager.update(downloadKey, event.loaded, event.total),
-      });
-
-      downloadBlob(data, filename);
+      downloadUrl(getBaseUrl() + `/assets/${id}/original` + (key ? `?key=${key}` : ''), filename);
     } catch (error) {
       handleError(error, $t('errors.error_downloading', { values: { filename } }));
-      downloadManager.clear(downloadKey);
-    } finally {
-      setTimeout(() => downloadManager.clear(downloadKey), 5000);
     }
   }
 };
@@ -367,7 +341,7 @@ export const getAssetType = (type: AssetTypeEnum) => {
   }
 };
 
-export const getSelectedAssets = (assets: Set<AssetResponseDto>, user: UserResponseDto | null): string[] => {
+export const getSelectedAssets = (assets: TimelineAsset[], user: UserResponseDto | null): string[] => {
   const ids = [...assets].filter((a) => user && a.ownerId === user.id).map((a) => a.id);
 
   const numberOfIssues = [...assets].filter((a) => user && a.ownerId !== user.id).length;
@@ -381,9 +355,14 @@ export const getSelectedAssets = (assets: Set<AssetResponseDto>, user: UserRespo
   return ids;
 };
 
-export const stackAssets = async (assets: AssetResponseDto[], showNotification = true) => {
+export type StackResponse = {
+  stack?: StackResponseDto;
+  toDeleteIds: string[];
+};
+
+export const stackAssets = async (assets: { id: string }[], showNotification = true): Promise<StackResponse> => {
   if (assets.length < 2) {
-    return false;
+    return { stack: undefined, toDeleteIds: [] };
   }
 
   const $t = get(t);
@@ -396,19 +375,18 @@ export const stackAssets = async (assets: AssetResponseDto[], showNotification =
         type: NotificationType.Info,
         button: {
           text: $t('view_stack'),
-          onClick: () => assetViewingStore.setAssetId(stack.primaryAssetId),
+          onClick: () => navigate({ targetRoute: 'current', assetId: stack.primaryAssetId }),
         },
       });
     }
 
-    for (const [index, asset] of assets.entries()) {
-      asset.stack = index === 0 ? { id: stack.id, assetCount: stack.assets.length, primaryAssetId: asset.id } : null;
-    }
-
-    return assets.slice(1).map((asset) => asset.id);
+    return {
+      stack,
+      toDeleteIds: assets.slice(1).map((asset) => asset.id),
+    };
   } catch (error) {
     handleError(error, $t('errors.failed_to_stack_assets'));
-    return false;
+    return { stack: undefined, toDeleteIds: [] };
   }
 };
 
@@ -462,7 +440,7 @@ export const keepThisDeleteOthers = async (keepAsset: AssetResponseDto, stack: S
   }
 };
 
-export const selectAllAssets = async (assetStore: AssetStore, assetInteraction: AssetInteraction) => {
+export const selectAllAssets = async (timelineManager: TimelineManager, assetInteraction: AssetInteraction) => {
   if (get(isSelectingAllAssets)) {
     // Selection is already ongoing
     return;
@@ -470,19 +448,18 @@ export const selectAllAssets = async (assetStore: AssetStore, assetInteraction: 
   isSelectingAllAssets.set(true);
 
   try {
-    for (const bucket of assetStore.buckets) {
-      await assetStore.loadBucket(bucket.bucketDate);
+    for (const monthGroup of timelineManager.months) {
+      await timelineManager.loadMonthGroup(monthGroup.yearMonth);
 
       if (!get(isSelectingAllAssets)) {
+        assetInteraction.clearMultiselect();
         break; // Cancelled
       }
-      assetInteraction.selectAssets(bucket.assets);
+      assetInteraction.selectAssets(assetsSnapshot([...monthGroup.assetsIterator()]));
 
-      // We use setTimeout to allow the UI to update. Otherwise, this may
-      // cause a long delay between the start of 'select all' and the
-      // effective update of the UI, depending on the number of assets
-      // to select
-      await delay(0);
+      for (const dateGroup of monthGroup.dayGroups) {
+        assetInteraction.addGroupToMultiselectGroup(dateGroup.groupTitle);
+      }
     }
   } catch (error) {
     const $t = get(t);
@@ -502,7 +479,7 @@ export const toggleArchive = async (asset: AssetResponseDto) => {
     const data = await updateAsset({
       id: asset.id,
       updateAssetDto: {
-        isArchived: !asset.isArchived,
+        visibility: asset.isArchived ? AssetVisibility.Timeline : AssetVisibility.Archive,
       },
     });
 
@@ -519,28 +496,29 @@ export const toggleArchive = async (asset: AssetResponseDto) => {
   return asset;
 };
 
-export const archiveAssets = async (assets: AssetResponseDto[], archive: boolean) => {
-  const isArchived = archive;
+export const archiveAssets = async (assets: { id: string }[], visibility: AssetVisibility) => {
   const ids = assets.map(({ id }) => id);
   const $t = get(t);
 
   try {
     if (ids.length > 0) {
-      await updateAssets({ assetBulkUpdateDto: { ids, isArchived } });
-    }
-
-    for (const asset of assets) {
-      asset.isArchived = isArchived;
+      await updateAssets({
+        assetBulkUpdateDto: { ids, visibility },
+      });
     }
 
     notificationController.show({
-      message: isArchived
-        ? $t('archived_count', { values: { count: ids.length } })
-        : $t('unarchived_count', { values: { count: ids.length } }),
+      message:
+        visibility === AssetVisibility.Archive
+          ? $t('archived_count', { values: { count: ids.length } })
+          : $t('unarchived_count', { values: { count: ids.length } }),
       type: NotificationType.Info,
     });
   } catch (error) {
-    handleError(error, $t('errors.unable_to_archive_unarchive', { values: { archived: isArchived } }));
+    handleError(
+      error,
+      $t('errors.unable_to_archive_unarchive', { values: { archived: visibility === AssetVisibility.Archive } }),
+    );
   }
 
   return ids;

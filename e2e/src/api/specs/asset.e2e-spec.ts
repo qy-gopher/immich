@@ -3,11 +3,11 @@ import {
   AssetMediaStatus,
   AssetResponseDto,
   AssetTypeEnum,
+  AssetVisibility,
+  getAssetInfo,
+  getMyUser,
   LoginResponseDto,
   SharedLinkType,
-  getAssetInfo,
-  getConfig,
-  getMyUser,
   updateConfig,
 } from '@immich/sdk';
 import { exiftool } from 'exiftool-vendored';
@@ -15,39 +15,18 @@ import { DateTime } from 'luxon';
 import { randomBytes } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import sharp from 'sharp';
 import { Socket } from 'socket.io-client';
 import { createUserDto, uuidDto } from 'src/fixtures';
 import { makeRandomImage } from 'src/generators';
 import { errorDto } from 'src/responses';
-import { app, asBearerAuth, tempDir, testAssetDir, utils } from 'src/utils';
+import { app, asBearerAuth, tempDir, TEN_TIMES, testAssetDir, utils } from 'src/utils';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-const makeUploadDto = (options?: { omit: string }): Record<string, any> => {
-  const dto: Record<string, any> = {
-    deviceAssetId: 'example-image',
-    deviceId: 'TEST',
-    fileCreatedAt: new Date().toISOString(),
-    fileModifiedAt: new Date().toISOString(),
-    isFavorite: 'testing',
-    duration: '0:00:00.000000',
-  };
-
-  const omit = options?.omit;
-  if (omit) {
-    delete dto[omit];
-  }
-
-  return dto;
-};
-
-const TEN_TIMES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-
 const locationAssetFilepath = `${testAssetDir}/metadata/gps-position/thompson-springs.jpg`;
 const ratingAssetFilepath = `${testAssetDir}/metadata/rating/mongolels.jpg`;
-const facesAssetFilepath = `${testAssetDir}/metadata/faces/portrait.jpg`;
-
-const getSystemConfig = (accessToken: string) => getConfig({ headers: asBearerAuth(accessToken) });
+const facesAssetDir = `${testAssetDir}/metadata/faces`;
 
 const readTags = async (bytes: Buffer, filename: string) => {
   const filepath = join(tempDir, filename);
@@ -61,6 +40,40 @@ const today = DateTime.fromObject({
   day: 3,
 }) as DateTime<true>;
 const yesterday = today.minus({ days: 1 });
+
+const createTestImageWithExif = async (filename: string, exifData: Record<string, any>) => {
+  // Generate unique color to ensure different checksums for each image
+  const r = Math.floor(Math.random() * 256);
+  const g = Math.floor(Math.random() * 256);
+  const b = Math.floor(Math.random() * 256);
+
+  // Create a 100x100 solid color JPEG using Sharp
+  const imageBytes = await sharp({
+    create: {
+      width: 100,
+      height: 100,
+      channels: 3,
+      background: { r, g, b },
+    },
+  })
+    .jpeg({ quality: 90 })
+    .toBuffer();
+
+  // Add random suffix to filename to avoid collisions
+  const uniqueFilename = filename.replace('.jpg', `-${randomBytes(4).toString('hex')}.jpg`);
+  const filepath = join(tempDir, uniqueFilename);
+  await writeFile(filepath, imageBytes);
+
+  // Filter out undefined values before writing EXIF
+  const cleanExifData = Object.fromEntries(Object.entries(exifData).filter(([, value]) => value !== undefined));
+
+  await exiftool.write(filepath, cleanExifData);
+
+  // Re-read the image bytes after EXIF has been written
+  const finalImageBytes = await readFile(filepath);
+
+  return { filepath, imageBytes: finalImageBytes, filename: uniqueFilename };
+};
 
 describe('/asset', () => {
   let admin: LoginResponseDto;
@@ -142,9 +155,9 @@ describe('/asset', () => {
       // stats
       utils.createAsset(statsUser.accessToken),
       utils.createAsset(statsUser.accessToken, { isFavorite: true }),
-      utils.createAsset(statsUser.accessToken, { isArchived: true }),
+      utils.createAsset(statsUser.accessToken, { visibility: AssetVisibility.Archive }),
       utils.createAsset(statsUser.accessToken, {
-        isArchived: true,
+        visibility: AssetVisibility.Archive,
         isFavorite: true,
         assetData: { filename: 'example.mp4' },
       }),
@@ -165,13 +178,6 @@ describe('/asset', () => {
   });
 
   describe('GET /assets/:id/original', () => {
-    it('should require authentication', async () => {
-      const { status, body } = await request(app).get(`/assets/${uuidDto.notFound}/original`);
-
-      expect(status).toBe(401);
-      expect(body).toEqual(errorDto.unauthorized);
-    });
-
     it('should download the file', async () => {
       const response = await request(app)
         .get(`/assets/${user1Assets[0].id}/original`)
@@ -183,20 +189,6 @@ describe('/asset', () => {
   });
 
   describe('GET /assets/:id', () => {
-    it('should require authentication', async () => {
-      const { status, body } = await request(app).get(`/assets/${uuidDto.notFound}`);
-      expect(body).toEqual(errorDto.unauthorized);
-      expect(status).toBe(401);
-    });
-
-    it('should require a valid id', async () => {
-      const { status, body } = await request(app)
-        .get(`/assets/${uuidDto.invalid}`)
-        .set('Authorization', `Bearer ${user1.accessToken}`);
-      expect(status).toBe(400);
-      expect(body).toEqual(errorDto.badRequest(['id must be a UUID']));
-    });
-
     it('should require access', async () => {
       const { status, body } = await request(app)
         .get(`/assets/${user2Assets[0].id}`)
@@ -229,31 +221,22 @@ describe('/asset', () => {
       });
     });
 
-    it('should get the asset faces', async () => {
-      const config = await getSystemConfig(admin.accessToken);
-      config.metadata.faces.import = true;
-      await updateConfig({ systemConfigDto: config }, { headers: asBearerAuth(admin.accessToken) });
-
-      // asset faces
-      const facesAsset = await utils.createAsset(admin.accessToken, {
-        assetData: {
+    describe('faces', () => {
+      const metadataFaceTests = [
+        {
+          description: 'without orientation',
           filename: 'portrait.jpg',
-          bytes: await readFile(facesAssetFilepath),
         },
-      });
-
-      await utils.waitForWebsocketEvent({ event: 'assetUpload', id: facesAsset.id });
-
-      const { status, body } = await request(app)
-        .get(`/assets/${facesAsset.id}`)
-        .set('Authorization', `Bearer ${admin.accessToken}`);
-      expect(status).toBe(200);
-      expect(body.id).toEqual(facesAsset.id);
-      expect(body.people).toMatchObject([
+        {
+          description: 'adjusting face regions to orientation',
+          filename: 'portrait-orientation-6.jpg',
+        },
+      ];
+      // should produce same resulting face region coordinates for any orientation
+      const expectedFaces = [
         {
           name: 'Marie Curie',
           birthDate: null,
-          thumbnailPath: '',
           isHidden: false,
           faces: [
             {
@@ -270,7 +253,6 @@ describe('/asset', () => {
         {
           name: 'Pierre Curie',
           birthDate: null,
-          thumbnailPath: '',
           isHidden: false,
           faces: [
             {
@@ -284,7 +266,30 @@ describe('/asset', () => {
             },
           ],
         },
-      ]);
+      ];
+
+      it.each(metadataFaceTests)('should get the asset faces from $filename $description', async ({ filename }) => {
+        const config = await utils.getSystemConfig(admin.accessToken);
+        config.metadata.faces.import = true;
+        await updateConfig({ systemConfigDto: config }, { headers: asBearerAuth(admin.accessToken) });
+
+        const facesAsset = await utils.createAsset(admin.accessToken, {
+          assetData: {
+            filename,
+            bytes: await readFile(`${facesAssetDir}/${filename}`),
+          },
+        });
+
+        await utils.waitForWebsocketEvent({ event: 'assetUpload', id: facesAsset.id });
+
+        const { status, body } = await request(app)
+          .get(`/assets/${facesAsset.id}`)
+          .set('Authorization', `Bearer ${admin.accessToken}`);
+
+        expect(status).toBe(200);
+        expect(body.id).toEqual(facesAsset.id);
+        expect(body.people).toMatchObject(expectedFaces);
+      });
     });
 
     it('should work with a shared link', async () => {
@@ -338,7 +343,7 @@ describe('/asset', () => {
       });
 
       it('disallows viewing archived assets', async () => {
-        const asset = await utils.createAsset(user1.accessToken, { isArchived: true });
+        const asset = await utils.createAsset(user1.accessToken, { visibility: AssetVisibility.Archive });
 
         const { status } = await request(app)
           .get(`/assets/${asset.id}`)
@@ -359,13 +364,6 @@ describe('/asset', () => {
   });
 
   describe('GET /assets/statistics', () => {
-    it('should require authentication', async () => {
-      const { status, body } = await request(app).get('/assets/statistics');
-
-      expect(status).toBe(401);
-      expect(body).toEqual(errorDto.unauthorized);
-    });
-
     it('should return stats of all assets', async () => {
       const { status, body } = await request(app)
         .get('/assets/statistics')
@@ -389,7 +387,7 @@ describe('/asset', () => {
       const { status, body } = await request(app)
         .get('/assets/statistics')
         .set('Authorization', `Bearer ${statsUser.accessToken}`)
-        .query({ isArchived: true });
+        .query({ visibility: AssetVisibility.Archive });
 
       expect(status).toBe(200);
       expect(body).toEqual({ images: 1, videos: 1, total: 2 });
@@ -399,7 +397,7 @@ describe('/asset', () => {
       const { status, body } = await request(app)
         .get('/assets/statistics')
         .set('Authorization', `Bearer ${statsUser.accessToken}`)
-        .query({ isFavorite: true, isArchived: true });
+        .query({ isFavorite: true, visibility: AssetVisibility.Archive });
 
       expect(status).toBe(200);
       expect(body).toEqual({ images: 0, videos: 1, total: 1 });
@@ -409,7 +407,7 @@ describe('/asset', () => {
       const { status, body } = await request(app)
         .get('/assets/statistics')
         .set('Authorization', `Bearer ${statsUser.accessToken}`)
-        .query({ isFavorite: false, isArchived: false });
+        .query({ isFavorite: false, visibility: AssetVisibility.Timeline });
 
       expect(status).toBe(200);
       expect(body).toEqual({ images: 1, videos: 0, total: 1 });
@@ -428,13 +426,6 @@ describe('/asset', () => {
       ]);
 
       await utils.waitForQueueFinish(admin.accessToken, 'thumbnailGeneration');
-    });
-
-    it('should require authentication', async () => {
-      const { status, body } = await request(app).get('/assets/random');
-
-      expect(status).toBe(401);
-      expect(body).toEqual(errorDto.unauthorized);
     });
 
     it.each(TEN_TIMES)('should return 1 random assets', async () => {
@@ -472,31 +463,9 @@ describe('/asset', () => {
       expect(status).toBe(200);
       expect(body).toEqual([expect.objectContaining({ id: user2Assets[0].id })]);
     });
-
-    it('should return error', async () => {
-      const { status } = await request(app)
-        .get('/assets/random?count=ABC')
-        .set('Authorization', `Bearer ${user1.accessToken}`);
-
-      expect(status).toBe(400);
-    });
   });
 
   describe('PUT /assets/:id', () => {
-    it('should require authentication', async () => {
-      const { status, body } = await request(app).put(`/assets/:${uuidDto.notFound}`);
-      expect(status).toBe(401);
-      expect(body).toEqual(errorDto.unauthorized);
-    });
-
-    it('should require a valid id', async () => {
-      const { status, body } = await request(app)
-        .put(`/assets/${uuidDto.invalid}`)
-        .set('Authorization', `Bearer ${user1.accessToken}`);
-      expect(status).toBe(400);
-      expect(body).toEqual(errorDto.badRequest(['id must be a UUID']));
-    });
-
     it('should require access', async () => {
       const { status, body } = await request(app)
         .put(`/assets/${user2Assets[0].id}`)
@@ -524,7 +493,7 @@ describe('/asset', () => {
       const { status, body } = await request(app)
         .put(`/assets/${user1Assets[0].id}`)
         .set('Authorization', `Bearer ${user1.accessToken}`)
-        .send({ isArchived: true });
+        .send({ visibility: AssetVisibility.Archive });
       expect(body).toMatchObject({ id: user1Assets[0].id, isArchived: true });
       expect(status).toEqual(200);
     });
@@ -538,7 +507,7 @@ describe('/asset', () => {
       expect(body).toMatchObject({
         id: user1Assets[0].id,
         exifInfo: expect.objectContaining({
-          dateTimeOriginal: '2023-11-20T01:11:00.000Z',
+          dateTimeOriginal: '2023-11-20T01:11:00+00:00',
         }),
       });
       expect(status).toEqual(200);
@@ -608,7 +577,7 @@ describe('/asset', () => {
       await utils.waitForQueueFinish(admin.accessToken, 'metadataExtraction');
 
       const assetInfo = await utils.getAssetInfo(user1.accessToken, id);
-      expect(assetInfo.exifInfo?.dateTimeOriginal).toBe('2024-07-11T10:32:52.000Z');
+      expect(assetInfo.exifInfo?.dateTimeOriginal).toBe('2024-07-11T10:32:52+00:00');
 
       const { status, body } = await request(app)
         .put(`/assets/${id}`)
@@ -618,32 +587,10 @@ describe('/asset', () => {
       expect(body).toMatchObject({
         id,
         exifInfo: expect.objectContaining({
-          dateTimeOriginal: '2023-11-20T01:11:00.000Z',
+          dateTimeOriginal: '2023-11-20T01:11:00+00:00',
         }),
       });
       expect(status).toEqual(200);
-    });
-
-    it('should reject invalid gps coordinates', async () => {
-      for (const test of [
-        { latitude: 12 },
-        { longitude: 12 },
-        { latitude: 12, longitude: 'abc' },
-        { latitude: 'abc', longitude: 12 },
-        { latitude: null, longitude: 12 },
-        { latitude: 12, longitude: null },
-        { latitude: 91, longitude: 12 },
-        { latitude: -91, longitude: 12 },
-        { latitude: 12, longitude: -181 },
-        { latitude: 12, longitude: 181 },
-      ]) {
-        const { status, body } = await request(app)
-          .put(`/assets/${user1Assets[0].id}`)
-          .send(test)
-          .set('Authorization', `Bearer ${user1.accessToken}`);
-        expect(status).toBe(400);
-        expect(body).toEqual(errorDto.badRequest());
-      }
     });
 
     it('should update gps data', async () => {
@@ -703,15 +650,18 @@ describe('/asset', () => {
       expect(status).toEqual(200);
     });
 
-    it('should reject invalid rating', async () => {
-      for (const test of [{ rating: 7 }, { rating: 3.5 }, { rating: null }]) {
-        const { status, body } = await request(app)
-          .put(`/assets/${user1Assets[0].id}`)
-          .send(test)
-          .set('Authorization', `Bearer ${user1.accessToken}`);
-        expect(status).toBe(400);
-        expect(body).toEqual(errorDto.badRequest());
-      }
+    it('should set the negative rating', async () => {
+      const { status, body } = await request(app)
+        .put(`/assets/${user1Assets[0].id}`)
+        .set('Authorization', `Bearer ${user1.accessToken}`)
+        .send({ rating: -1 });
+      expect(body).toMatchObject({
+        id: user1Assets[0].id,
+        exifInfo: expect.objectContaining({
+          rating: -1,
+        }),
+      });
+      expect(status).toEqual(200);
     });
 
     it('should return tagged people', async () => {
@@ -737,25 +687,6 @@ describe('/asset', () => {
   });
 
   describe('DELETE /assets', () => {
-    it('should require authentication', async () => {
-      const { status, body } = await request(app)
-        .delete(`/assets`)
-        .send({ ids: [uuidDto.notFound] });
-
-      expect(status).toBe(401);
-      expect(body).toEqual(errorDto.unauthorized);
-    });
-
-    it('should require a valid uuid', async () => {
-      const { status, body } = await request(app)
-        .delete(`/assets`)
-        .send({ ids: [uuidDto.invalid] })
-        .set('Authorization', `Bearer ${admin.accessToken}`);
-
-      expect(status).toBe(400);
-      expect(body).toEqual(errorDto.badRequest(['each value in ids must be a UUID']));
-    });
-
     it('should throw an error when the id is not found', async () => {
       const { status, body } = await request(app)
         .delete(`/assets`)
@@ -766,7 +697,7 @@ describe('/asset', () => {
       expect(body).toEqual(errorDto.badRequest('Not found or no asset.delete access'));
     });
 
-    it('should move an asset to the trash', async () => {
+    it('should move an asset to trash', async () => {
       const { id: assetId } = await utils.createAsset(admin.accessToken);
 
       const before = await utils.getAssetInfo(admin.accessToken, assetId);
@@ -780,6 +711,38 @@ describe('/asset', () => {
 
       const after = await utils.getAssetInfo(admin.accessToken, assetId);
       expect(after.isTrashed).toBe(true);
+    });
+
+    it('should permanently delete an asset from trash', async () => {
+      const { id: assetId } = await utils.createAsset(admin.accessToken);
+
+      {
+        const { status } = await request(app)
+          .delete('/assets')
+          .send({ ids: [assetId] })
+          .set('Authorization', `Bearer ${admin.accessToken}`);
+        expect(status).toBe(204);
+      }
+
+      const trashed = await utils.getAssetInfo(admin.accessToken, assetId);
+      expect(trashed.isTrashed).toBe(true);
+
+      {
+        const { status } = await request(app)
+          .delete('/assets')
+          .send({ ids: [assetId], force: true })
+          .set('Authorization', `Bearer ${admin.accessToken}`);
+        expect(status).toBe(204);
+      }
+
+      await utils.waitForWebsocketEvent({ event: 'assetDelete', id: assetId });
+
+      {
+        const { status } = await request(app)
+          .get(`/assets/${assetId}`)
+          .set('Authorization', `Bearer ${admin.accessToken}`);
+        expect(status).toBe(400);
+      }
     });
 
     it('should clean up live photos', async () => {
@@ -836,13 +799,6 @@ describe('/asset', () => {
   });
 
   describe('GET /assets/:id/thumbnail', () => {
-    it('should require authentication', async () => {
-      const { status, body } = await request(app).get(`/assets/${locationAsset.id}/thumbnail`);
-
-      expect(status).toBe(401);
-      expect(body).toEqual(errorDto.unauthorized);
-    });
-
     it('should not include gps data for webp thumbnails', async () => {
       await utils.waitForWebsocketEvent({
         event: 'assetUpload',
@@ -878,13 +834,6 @@ describe('/asset', () => {
   });
 
   describe('GET /assets/:id/original', () => {
-    it('should require authentication', async () => {
-      const { status, body } = await request(app).get(`/assets/${locationAsset.id}/original`);
-
-      expect(status).toBe(401);
-      expect(body).toEqual(errorDto.unauthorized);
-    });
-
     it('should download the original', async () => {
       const { status, body, type } = await request(app)
         .get(`/assets/${locationAsset.id}/original`)
@@ -905,42 +854,8 @@ describe('/asset', () => {
     });
   });
 
-  describe('PUT /assets', () => {
-    it('should require authentication', async () => {
-      const { status, body } = await request(app).put('/assets');
-
-      expect(status).toBe(401);
-      expect(body).toEqual(errorDto.unauthorized);
-    });
-  });
-
   describe('POST /assets', () => {
     beforeAll(setupTests, 30_000);
-
-    it('should require authentication', async () => {
-      const { status, body } = await request(app).post(`/assets`);
-      expect(body).toEqual(errorDto.unauthorized);
-      expect(status).toBe(401);
-    });
-
-    it.each([
-      { should: 'require `deviceAssetId`', dto: { ...makeUploadDto({ omit: 'deviceAssetId' }) } },
-      { should: 'require `deviceId`', dto: { ...makeUploadDto({ omit: 'deviceId' }) } },
-      { should: 'require `fileCreatedAt`', dto: { ...makeUploadDto({ omit: 'fileCreatedAt' }) } },
-      { should: 'require `fileModifiedAt`', dto: { ...makeUploadDto({ omit: 'fileModifiedAt' }) } },
-      { should: 'require `duration`', dto: { ...makeUploadDto({ omit: 'duration' }) } },
-      { should: 'throw if `isFavorite` is not a boolean', dto: { ...makeUploadDto(), isFavorite: 'not-a-boolean' } },
-      { should: 'throw if `isVisible` is not a boolean', dto: { ...makeUploadDto(), isVisible: 'not-a-boolean' } },
-      { should: 'throw if `isArchived` is not a boolean', dto: { ...makeUploadDto(), isArchived: 'not-a-boolean' } },
-    ])('should $should', async ({ dto }) => {
-      const { status, body } = await request(app)
-        .post('/assets')
-        .set('Authorization', `Bearer ${user1.accessToken}`)
-        .attach('assetData', makeRandomImage(), 'example.png')
-        .field(dto);
-      expect(status).toBe(400);
-      expect(body).toEqual(errorDto.badRequest());
-    });
 
     const tests = [
       {
@@ -953,8 +868,6 @@ describe('/asset', () => {
             exifImageHeight: 1080,
             exifImageWidth: 1617,
             fileSizeInByte: 862_424,
-            latitude: null,
-            longitude: null,
           },
         },
       },
@@ -964,11 +877,9 @@ describe('/asset', () => {
           type: AssetTypeEnum.Image,
           originalFileName: 'el_torcal_rocks.jpg',
           exifInfo: {
-            dateTimeOriginal: '2012-08-05T11:39:59.000Z',
+            dateTimeOriginal: '2012-08-05T11:39:59+00:00',
             exifImageWidth: 512,
             exifImageHeight: 341,
-            latitude: null,
-            longitude: null,
             focalLength: 75,
             iso: 200,
             fNumber: 11,
@@ -976,7 +887,6 @@ describe('/asset', () => {
             fileSizeInByte: 53_493,
             make: 'SONY',
             model: 'DSLR-A550',
-            orientation: null,
             description: 'SONY DSC',
           },
         },
@@ -991,8 +901,6 @@ describe('/asset', () => {
             exifImageHeight: 1080,
             exifImageWidth: 1440,
             fileSizeInByte: 1_780_777,
-            latitude: null,
-            longitude: null,
           },
         },
       },
@@ -1003,7 +911,7 @@ describe('/asset', () => {
           originalFileName: 'IMG_2682.heic',
           fileCreatedAt: '2019-03-21T16:04:22.348Z',
           exifInfo: {
-            dateTimeOriginal: '2019-03-21T16:04:22.348Z',
+            dateTimeOriginal: '2019-03-21T16:04:22.348+00:00',
             exifImageWidth: 4032,
             exifImageHeight: 3024,
             latitude: 41.2203,
@@ -1028,8 +936,6 @@ describe('/asset', () => {
           exifInfo: {
             exifImageWidth: 800,
             exifImageHeight: 800,
-            latitude: null,
-            longitude: null,
             fileSizeInByte: 25_408,
           },
         },
@@ -1048,9 +954,7 @@ describe('/asset', () => {
             focalLength: 18,
             iso: 100,
             fileSizeInByte: 9_057_784,
-            dateTimeOriginal: '2010-07-20T17:27:12.000Z',
-            latitude: null,
-            longitude: null,
+            dateTimeOriginal: '2010-07-20T17:27:12+00:00',
             orientation: '1',
           },
         },
@@ -1069,9 +973,7 @@ describe('/asset', () => {
             focalLength: 85,
             iso: 200,
             fileSizeInByte: 15_856_335,
-            dateTimeOriginal: '2016-09-22T21:10:29.060Z',
-            latitude: null,
-            longitude: null,
+            dateTimeOriginal: '2016-09-22T21:10:29.06+00:00',
             orientation: '1',
             timeZone: 'UTC-4',
           },
@@ -1093,9 +995,7 @@ describe('/asset', () => {
             focalLength: 35,
             iso: 400,
             fileSizeInByte: 19_587_072,
-            dateTimeOriginal: '2018-05-10T08:42:37.842Z',
-            latitude: null,
-            longitude: null,
+            dateTimeOriginal: '2018-05-10T08:42:37.842+00:00',
             orientation: '1',
           },
         },
@@ -1115,11 +1015,9 @@ describe('/asset', () => {
             fNumber: 8,
             focalLength: 97,
             iso: 100,
-            lensModel: 'E PZ 18-105mm F4 G OSS',
+            lensModel: 'Sony E PZ 18-105mm F4 G OSS',
             fileSizeInByte: 25_001_984,
-            dateTimeOriginal: '2016-09-27T10:51:44.000Z',
-            latitude: null,
-            longitude: null,
+            dateTimeOriginal: '2016-09-27T10:51:44+00:00',
             orientation: '1',
           },
         },
@@ -1139,11 +1037,9 @@ describe('/asset', () => {
             fNumber: 22,
             focalLength: 25,
             iso: 100,
-            lensModel: 'E 25mm F2',
+            lensModel: 'Zeiss Batis 25mm F2',
             fileSizeInByte: 49_512_448,
-            dateTimeOriginal: '2016-01-08T14:08:01.000Z',
-            latitude: null,
-            longitude: null,
+            dateTimeOriginal: '2016-01-08T14:08:01+00:00',
             orientation: '1',
           },
         },
@@ -1165,7 +1061,7 @@ describe('/asset', () => {
             iso: 80,
             lensModel: null,
             fileSizeInByte: 11_113_617,
-            dateTimeOriginal: '2015-12-27T09:55:40.000Z',
+            dateTimeOriginal: '2015-12-27T09:55:40+00:00',
             latitude: null,
             longitude: null,
             orientation: '1',
@@ -1189,7 +1085,7 @@ describe('/asset', () => {
             iso: 160,
             lensModel: null,
             fileSizeInByte: 13_551_312,
-            dateTimeOriginal: '2024-10-12T21:01:01.000Z',
+            dateTimeOriginal: '2024-10-12T21:01:01+00:00',
             latitude: null,
             longitude: null,
             orientation: '6',
@@ -1203,7 +1099,7 @@ describe('/asset', () => {
           originalFileName: 'Ricoh_GR3-450.DNG',
           fileCreatedAt: '2024-06-08T13:48:39.000Z',
           exifInfo: {
-            dateTimeOriginal: '2024-06-08T13:48:39.000Z',
+            dateTimeOriginal: '2024-06-08T13:48:39+00:00',
             exifImageHeight: 4064,
             exifImageWidth: 6112,
             exposureTime: '1/400',
@@ -1212,7 +1108,7 @@ describe('/asset', () => {
             focalLength: 18.3,
             iso: 100,
             latitude: 36.613_24,
-            lensModel: 'GR LENS 18.3mm F2.8',
+            lensModel: '18.3mm F2.8',
             longitude: -121.897_85,
             make: 'RICOH IMAGING COMPANY, LTD.',
             model: 'RICOH GR III',
@@ -1222,30 +1118,21 @@ describe('/asset', () => {
       },
     ];
 
-    it(`should upload and generate a thumbnail for different file types`, async () => {
-      // upload in parallel
-      const assets = await Promise.all(
-        tests.map(async ({ input }) => {
-          const filepath = join(testAssetDir, input);
-          return utils.createAsset(admin.accessToken, {
-            assetData: { bytes: await readFile(filepath), filename: basename(filepath) },
-          });
-        }),
-      );
+    it.each(tests)(`should upload and generate a thumbnail for different file types`, async ({ input, expected }) => {
+      const filepath = join(testAssetDir, input);
+      const response = await utils.createAsset(admin.accessToken, {
+        assetData: { bytes: await readFile(filepath), filename: basename(filepath) },
+      });
 
-      for (const { id, status } of assets) {
-        expect(status).toBe(AssetMediaStatus.Created);
-        await utils.waitForWebsocketEvent({ event: 'assetUpload', id });
-      }
+      expect(response.status).toBe(AssetMediaStatus.Created);
+      const id = response.id;
+      // longer timeout as the thumbnail generation from full-size raw files can take a while
+      await utils.waitForWebsocketEvent({ event: 'assetUpload', id });
 
-      for (const [i, { id }] of assets.entries()) {
-        const { expected } = tests[i];
-        const asset = await utils.getAssetInfo(admin.accessToken, id);
-
-        expect(asset.exifInfo).toBeDefined();
-        expect(asset.exifInfo).toMatchObject(expected.exifInfo);
-        expect(asset).toMatchObject(expected);
-      }
+      const asset = await utils.getAssetInfo(admin.accessToken, id);
+      expect(asset.exifInfo).toBeDefined();
+      expect(asset.exifInfo).toMatchObject(expected.exifInfo);
+      expect(asset).toMatchObject(expected);
     });
 
     it('should handle a duplicate', async () => {
@@ -1335,6 +1222,411 @@ describe('/asset', () => {
 
       const video = await utils.getAssetInfo(admin.accessToken, asset.livePhotoVideoId as string);
       expect(video.checksum).toStrictEqual(checksum);
+    });
+  });
+
+  describe('EXIF metadata extraction', () => {
+    describe('Additional date tag extraction', () => {
+      describe('Date-time vs time-only tag handling', () => {
+        it('should fall back to file timestamps when only time-only tags are available', async () => {
+          const { imageBytes, filename } = await createTestImageWithExif('time-only-fallback.jpg', {
+            TimeCreated: '2023:11:15 14:30:00', // Time-only tag, should not be used for dateTimeOriginal
+            // Exclude all date-time tags to force fallback to file timestamps
+            SubSecDateTimeOriginal: undefined,
+            DateTimeOriginal: undefined,
+            SubSecCreateDate: undefined,
+            SubSecMediaCreateDate: undefined,
+            CreateDate: undefined,
+            MediaCreateDate: undefined,
+            CreationDate: undefined,
+            DateTimeCreated: undefined,
+            GPSDateTime: undefined,
+            DateTimeUTC: undefined,
+            SonyDateTime2: undefined,
+            GPSDateStamp: undefined,
+          });
+
+          const oldDate = new Date('2020-01-01T00:00:00.000Z');
+          const asset = await utils.createAsset(admin.accessToken, {
+            assetData: {
+              filename,
+              bytes: imageBytes,
+            },
+            fileCreatedAt: oldDate.toISOString(),
+            fileModifiedAt: oldDate.toISOString(),
+          });
+
+          await utils.waitForWebsocketEvent({ event: 'assetUpload', id: asset.id });
+
+          const assetInfo = await getAssetInfo({ id: asset.id }, { headers: asBearerAuth(admin.accessToken) });
+
+          expect(assetInfo.exifInfo?.dateTimeOriginal).toBeDefined();
+          // Should fall back to file timestamps, which we set to 2020-01-01
+          expect(new Date(assetInfo.exifInfo!.dateTimeOriginal!).getTime()).toBe(
+            new Date('2020-01-01T00:00:00.000Z').getTime(),
+          );
+        });
+
+        it('should prefer DateTimeOriginal over time-only tags', async () => {
+          const { imageBytes, filename } = await createTestImageWithExif('datetime-over-time.jpg', {
+            DateTimeOriginal: '2023:10:10 10:00:00', // Should be preferred
+            TimeCreated: '2023:11:15 14:30:00', // Should be ignored (time-only)
+          });
+
+          const asset = await utils.createAsset(admin.accessToken, {
+            assetData: {
+              filename,
+              bytes: imageBytes,
+            },
+          });
+
+          await utils.waitForWebsocketEvent({ event: 'assetUpload', id: asset.id });
+
+          const assetInfo = await getAssetInfo({ id: asset.id }, { headers: asBearerAuth(admin.accessToken) });
+
+          expect(assetInfo.exifInfo?.dateTimeOriginal).toBeDefined();
+          // Should use DateTimeOriginal, not TimeCreated
+          expect(new Date(assetInfo.exifInfo!.dateTimeOriginal!).getTime()).toBe(
+            new Date('2023-10-10T10:00:00.000Z').getTime(),
+          );
+        });
+      });
+
+      describe('GPSDateTime tag extraction', () => {
+        it('should extract GPSDateTime with GPS coordinates', async () => {
+          const { imageBytes, filename } = await createTestImageWithExif('gps-datetime.jpg', {
+            GPSDateTime: '2023:11:15 12:30:00Z',
+            GPSLatitude: 37.7749,
+            GPSLongitude: -122.4194,
+            // Exclude other date tags
+            SubSecDateTimeOriginal: undefined,
+            DateTimeOriginal: undefined,
+            SubSecCreateDate: undefined,
+            SubSecMediaCreateDate: undefined,
+            CreateDate: undefined,
+            MediaCreateDate: undefined,
+            CreationDate: undefined,
+            DateTimeCreated: undefined,
+            TimeCreated: undefined,
+          });
+
+          const asset = await utils.createAsset(admin.accessToken, {
+            assetData: {
+              filename,
+              bytes: imageBytes,
+            },
+          });
+
+          await utils.waitForWebsocketEvent({ event: 'assetUpload', id: asset.id });
+
+          const assetInfo = await getAssetInfo({ id: asset.id }, { headers: asBearerAuth(admin.accessToken) });
+
+          expect(assetInfo.exifInfo?.dateTimeOriginal).toBeDefined();
+          expect(assetInfo.exifInfo?.latitude).toBeCloseTo(37.7749, 4);
+          expect(assetInfo.exifInfo?.longitude).toBeCloseTo(-122.4194, 4);
+          expect(new Date(assetInfo.exifInfo!.dateTimeOriginal!).getTime()).toBe(
+            new Date('2023-11-15T12:30:00.000Z').getTime(),
+          );
+        });
+      });
+
+      describe('CreateDate tag extraction', () => {
+        it('should extract CreateDate when available', async () => {
+          const { imageBytes, filename } = await createTestImageWithExif('create-date.jpg', {
+            CreateDate: '2023:11:15 10:30:00',
+            // Exclude other higher priority date tags
+            SubSecDateTimeOriginal: undefined,
+            DateTimeOriginal: undefined,
+            SubSecCreateDate: undefined,
+            SubSecMediaCreateDate: undefined,
+            MediaCreateDate: undefined,
+            CreationDate: undefined,
+            DateTimeCreated: undefined,
+            TimeCreated: undefined,
+            GPSDateTime: undefined,
+          });
+
+          const asset = await utils.createAsset(admin.accessToken, {
+            assetData: {
+              filename,
+              bytes: imageBytes,
+            },
+          });
+
+          await utils.waitForWebsocketEvent({ event: 'assetUpload', id: asset.id });
+
+          const assetInfo = await getAssetInfo({ id: asset.id }, { headers: asBearerAuth(admin.accessToken) });
+
+          expect(assetInfo.exifInfo?.dateTimeOriginal).toBeDefined();
+          expect(new Date(assetInfo.exifInfo!.dateTimeOriginal!).getTime()).toBe(
+            new Date('2023-11-15T10:30:00.000Z').getTime(),
+          );
+        });
+      });
+
+      describe('GPSDateStamp tag extraction', () => {
+        it('should fall back to file timestamps when only date-only tags are available', async () => {
+          const { imageBytes, filename } = await createTestImageWithExif('gps-datestamp.jpg', {
+            GPSDateStamp: '2023:11:15', // Date-only tag, should not be used for dateTimeOriginal
+            // Note: NOT including GPSTimeStamp to avoid automatic GPSDateTime creation
+            GPSLatitude: 51.5074,
+            GPSLongitude: -0.1278,
+            // Explicitly exclude all testable date-time tags to force fallback to file timestamps
+            DateTimeOriginal: undefined,
+            CreateDate: undefined,
+            CreationDate: undefined,
+            GPSDateTime: undefined,
+          });
+
+          const oldDate = new Date('2020-01-01T00:00:00.000Z');
+          const asset = await utils.createAsset(admin.accessToken, {
+            assetData: {
+              filename,
+              bytes: imageBytes,
+            },
+            fileCreatedAt: oldDate.toISOString(),
+            fileModifiedAt: oldDate.toISOString(),
+          });
+
+          await utils.waitForWebsocketEvent({ event: 'assetUpload', id: asset.id });
+
+          const assetInfo = await getAssetInfo({ id: asset.id }, { headers: asBearerAuth(admin.accessToken) });
+
+          expect(assetInfo.exifInfo?.dateTimeOriginal).toBeDefined();
+          expect(assetInfo.exifInfo?.latitude).toBeCloseTo(51.5074, 4);
+          expect(assetInfo.exifInfo?.longitude).toBeCloseTo(-0.1278, 4);
+          // Should fall back to file timestamps, which we set to 2020-01-01
+          expect(new Date(assetInfo.exifInfo!.dateTimeOriginal!).getTime()).toBe(
+            new Date('2020-01-01T00:00:00.000Z').getTime(),
+          );
+        });
+      });
+
+      /*
+       * NOTE: The following EXIF date tags are NOT effectively usable with JPEG test files:
+       *
+       * NOT WRITABLE to JPEG:
+       * - MediaCreateDate: Can be read from video files but not written to JPEG
+       * - DateTimeCreated: Read-only tag in JPEG format
+       * - DateTimeUTC: Cannot be written to JPEG files
+       * - SonyDateTime2: Proprietary Sony tag, not writable to JPEG
+       * - SubSecMediaCreateDate: Tag not defined for JPEG format
+       * - SourceImageCreateTime: Non-standard insta360 tag, not writable to JPEG
+       *
+       * WRITABLE but NOT READABLE from JPEG:
+       * - SubSecDateTimeOriginal: Can be written but not read back from JPEG
+       * - SubSecCreateDate: Can be written but not read back from JPEG
+       *
+       * EFFECTIVELY TESTABLE TAGS (writable and readable):
+       * - DateTimeOriginal ✓
+       * - CreateDate ✓
+       * - CreationDate ✓
+       * - GPSDateTime ✓
+       *
+       * The metadata service correctly handles non-readable tags and will fall back to
+       * file timestamps when only non-readable tags are present.
+       */
+
+      describe('Date tag priority order', () => {
+        it('should respect the complete date tag priority order', async () => {
+          // Test cases using only EFFECTIVELY TESTABLE tags (writable AND readable from JPEG)
+          const testCases = [
+            {
+              name: 'DateTimeOriginal has highest priority among testable tags',
+              exifData: {
+                DateTimeOriginal: '2023:04:04 04:00:00', // TESTABLE - highest priority among readable tags
+                CreateDate: '2023:05:05 05:00:00', // TESTABLE
+                CreationDate: '2023:07:07 07:00:00', // TESTABLE
+                GPSDateTime: '2023:10:10 10:00:00', // TESTABLE
+              },
+              expectedDate: '2023-04-04T04:00:00.000Z',
+            },
+            {
+              name: 'CreateDate when DateTimeOriginal missing',
+              exifData: {
+                CreateDate: '2023:05:05 05:00:00', // TESTABLE
+                CreationDate: '2023:07:07 07:00:00', // TESTABLE
+                GPSDateTime: '2023:10:10 10:00:00', // TESTABLE
+              },
+              expectedDate: '2023-05-05T05:00:00.000Z',
+            },
+            {
+              name: 'CreationDate when standard EXIF tags missing',
+              exifData: {
+                CreationDate: '2023:07:07 07:00:00', // TESTABLE
+                GPSDateTime: '2023:10:10 10:00:00', // TESTABLE
+              },
+              expectedDate: '2023-07-07T07:00:00.000Z',
+            },
+            {
+              name: 'GPSDateTime when no other testable date tags present',
+              exifData: {
+                GPSDateTime: '2023:10:10 10:00:00', // TESTABLE
+                Make: 'SONY',
+              },
+              expectedDate: '2023-10-10T10:00:00.000Z',
+            },
+          ];
+
+          for (const testCase of testCases) {
+            const { imageBytes, filename } = await createTestImageWithExif(
+              `${testCase.name.replaceAll(/\s+/g, '-').toLowerCase()}.jpg`,
+              testCase.exifData,
+            );
+
+            const asset = await utils.createAsset(admin.accessToken, {
+              assetData: {
+                filename,
+                bytes: imageBytes,
+              },
+            });
+
+            await utils.waitForWebsocketEvent({ event: 'assetUpload', id: asset.id });
+
+            const assetInfo = await getAssetInfo({ id: asset.id }, { headers: asBearerAuth(admin.accessToken) });
+
+            expect(assetInfo.exifInfo?.dateTimeOriginal, `Failed for: ${testCase.name}`).toBeDefined();
+            expect(
+              new Date(assetInfo.exifInfo!.dateTimeOriginal!).getTime(),
+              `Date mismatch for: ${testCase.name}`,
+            ).toBe(new Date(testCase.expectedDate).getTime());
+          }
+        });
+      });
+
+      describe('Edge cases for date tag handling', () => {
+        it('should fall back to file timestamps with GPSDateStamp alone', async () => {
+          const { imageBytes, filename } = await createTestImageWithExif('gps-datestamp-only.jpg', {
+            GPSDateStamp: '2023:08:08', // Date-only tag, should not be used for dateTimeOriginal
+            // Intentionally no GPSTimeStamp
+            // Exclude all other date tags
+            SubSecDateTimeOriginal: undefined,
+            DateTimeOriginal: undefined,
+            SubSecCreateDate: undefined,
+            SubSecMediaCreateDate: undefined,
+            CreateDate: undefined,
+            MediaCreateDate: undefined,
+            CreationDate: undefined,
+            DateTimeCreated: undefined,
+            TimeCreated: undefined,
+            GPSDateTime: undefined,
+            DateTimeUTC: undefined,
+          });
+
+          const oldDate = new Date('2020-01-01T00:00:00.000Z');
+          const asset = await utils.createAsset(admin.accessToken, {
+            assetData: {
+              filename,
+              bytes: imageBytes,
+            },
+            fileCreatedAt: oldDate.toISOString(),
+            fileModifiedAt: oldDate.toISOString(),
+          });
+
+          await utils.waitForWebsocketEvent({ event: 'assetUpload', id: asset.id });
+
+          const assetInfo = await getAssetInfo({ id: asset.id }, { headers: asBearerAuth(admin.accessToken) });
+
+          expect(assetInfo.exifInfo?.dateTimeOriginal).toBeDefined();
+          // Should fall back to file timestamps, which we set to 2020-01-01
+          expect(new Date(assetInfo.exifInfo!.dateTimeOriginal!).getTime()).toBe(
+            new Date('2020-01-01T00:00:00.000Z').getTime(),
+          );
+        });
+
+        it('should handle all testable date tags present to verify complete priority order', async () => {
+          const { imageBytes, filename } = await createTestImageWithExif('all-testable-date-tags.jpg', {
+            // All TESTABLE date tags to JPEG format (writable AND readable)
+            DateTimeOriginal: '2023:04:04 04:00:00', // TESTABLE - highest priority among readable tags
+            CreateDate: '2023:05:05 05:00:00', // TESTABLE
+            CreationDate: '2023:07:07 07:00:00', // TESTABLE
+            GPSDateTime: '2023:10:10 10:00:00', // TESTABLE
+            // Note: Excluded non-testable tags:
+            // SubSec tags: writable but not readable from JPEG
+            // Non-writable tags: MediaCreateDate, DateTimeCreated, DateTimeUTC, SonyDateTime2, etc.
+            // Time-only/date-only tags: already excluded from EXIF_DATE_TAGS
+          });
+
+          const asset = await utils.createAsset(admin.accessToken, {
+            assetData: {
+              filename,
+              bytes: imageBytes,
+            },
+          });
+
+          await utils.waitForWebsocketEvent({ event: 'assetUpload', id: asset.id });
+
+          const assetInfo = await getAssetInfo({ id: asset.id }, { headers: asBearerAuth(admin.accessToken) });
+
+          expect(assetInfo.exifInfo?.dateTimeOriginal).toBeDefined();
+          // Should use DateTimeOriginal as it has the highest priority among testable tags
+          expect(new Date(assetInfo.exifInfo!.dateTimeOriginal!).getTime()).toBe(
+            new Date('2023-04-04T04:00:00.000Z').getTime(),
+          );
+        });
+
+        it('should use CreationDate when SubSec tags are missing', async () => {
+          const { imageBytes, filename } = await createTestImageWithExif('creation-date-priority.jpg', {
+            CreationDate: '2023:07:07 07:00:00', // WRITABLE
+            GPSDateTime: '2023:10:10 10:00:00', // WRITABLE
+            // Note: DateTimeCreated, DateTimeUTC, SonyDateTime2 are NOT writable to JPEG
+            // Note: TimeCreated and GPSDateStamp are excluded from EXIF_DATE_TAGS (time-only/date-only)
+            // Exclude SubSec and standard EXIF tags
+            SubSecDateTimeOriginal: undefined,
+            DateTimeOriginal: undefined,
+            SubSecCreateDate: undefined,
+            CreateDate: undefined,
+          });
+
+          const asset = await utils.createAsset(admin.accessToken, {
+            assetData: {
+              filename,
+              bytes: imageBytes,
+            },
+          });
+
+          await utils.waitForWebsocketEvent({ event: 'assetUpload', id: asset.id });
+
+          const assetInfo = await getAssetInfo({ id: asset.id }, { headers: asBearerAuth(admin.accessToken) });
+
+          expect(assetInfo.exifInfo?.dateTimeOriginal).toBeDefined();
+          // Should use CreationDate when available
+          expect(new Date(assetInfo.exifInfo!.dateTimeOriginal!).getTime()).toBe(
+            new Date('2023-07-07T07:00:00.000Z').getTime(),
+          );
+        });
+
+        it('should skip invalid date formats and use next valid tag', async () => {
+          const { imageBytes, filename } = await createTestImageWithExif('invalid-date-handling.jpg', {
+            // Note: Testing invalid date handling with only WRITABLE tags
+            GPSDateTime: '2023:10:10 10:00:00', // WRITABLE - Valid date
+            CreationDate: '2023:13:13 13:00:00', // WRITABLE - Valid date
+            // Note: TimeCreated excluded (time-only), DateTimeCreated not writable to JPEG
+            // Exclude other date tags
+            SubSecDateTimeOriginal: undefined,
+            DateTimeOriginal: undefined,
+            SubSecCreateDate: undefined,
+            CreateDate: undefined,
+          });
+
+          const asset = await utils.createAsset(admin.accessToken, {
+            assetData: {
+              filename,
+              bytes: imageBytes,
+            },
+          });
+
+          await utils.waitForWebsocketEvent({ event: 'assetUpload', id: asset.id });
+
+          const assetInfo = await getAssetInfo({ id: asset.id }, { headers: asBearerAuth(admin.accessToken) });
+
+          expect(assetInfo.exifInfo?.dateTimeOriginal).toBeDefined();
+          // Should skip invalid dates and use the first valid one (GPSDateTime)
+          expect(new Date(assetInfo.exifInfo!.dateTimeOriginal!).getTime()).toBe(
+            new Date('2023-10-10T10:00:00.000Z').getTime(),
+          );
+        });
+      });
     });
   });
 

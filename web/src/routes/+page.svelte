@@ -1,18 +1,17 @@
 <script lang="ts">
-  import Button from '$lib/components/elements/buttons/button.svelte';
-  import ImmichLogo from '$lib/components/shared-components/immich-logo.svelte';
+  import AuthPageLayout from '$lib/components/layouts/AuthPageLayout.svelte';
   import { AppRoute } from '$lib/constants';
+  import { Button, Heading } from '@immich/ui';
   import { t } from 'svelte-i18n';
 </script>
 
-<section class="flex h-screen w-screen place-content-center place-items-center">
-  <div class="flex max-w-[350px] flex-col place-items-center gap-8 text-center">
-    <div class="flex place-content-center place-items-center">
-      <ImmichLogo noText class="text-center" height="200" width="200" />
+<AuthPageLayout>
+  <div class="flex flex-col place-items-center text-center gap-12">
+    <Heading size="large" color="primary" tag="h1">{$t('welcome_to_immich')}</Heading>
+    <div>
+      <Button href={AppRoute.AUTH_REGISTER} size="medium" shape="round">
+        <span class="px-2 font-semibold">{$t('getting_started')}</span>
+      </Button>
     </div>
-    <h1 class="text-4xl font-bold text-immich-primary dark:text-immich-dark-primary">{$t('welcome_to_immich')}</h1>
-    <Button href={AppRoute.AUTH_REGISTER} size="lg" rounded="lg">
-      <span class="px-2 font-bold">{$t('getting_started')}</span>
-    </Button>
   </div>
-</section>
+</AuthPageLayout>

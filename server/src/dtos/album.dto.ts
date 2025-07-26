@@ -1,14 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayNotEmpty, IsArray, IsEnum, IsString, ValidateNested } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsString, ValidateNested } from 'class-validator';
 import _ from 'lodash';
-import { AssetResponseDto, mapAsset } from 'src/dtos/asset-response.dto';
+import { AlbumUser, AuthSharedLink, User } from 'src/database';
+import { AssetResponseDto, MapAsset, mapAsset } from 'src/dtos/asset-response.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
 import { UserResponseDto, mapUser } from 'src/dtos/user.dto';
-import { AlbumEntity } from 'src/entities/album.entity';
 import { AlbumUserRole, AssetOrder } from 'src/enum';
-import { getAssetDateTime } from 'src/utils/date-time';
-import { Optional, ValidateBoolean, ValidateUUID } from 'src/validation';
+import { Optional, ValidateBoolean, ValidateEnum, ValidateUUID } from 'src/validation';
 
 export class AlbumInfoDto {
   @ValidateBoolean({ optional: true })
@@ -19,8 +18,7 @@ export class AlbumUserAddDto {
   @ValidateUUID()
   userId!: string;
 
-  @IsEnum(AlbumUserRole)
-  @ApiProperty({ enum: AlbumUserRole, enumName: 'AlbumUserRole', default: AlbumUserRole.EDITOR })
+  @ValidateEnum({ enum: AlbumUserRole, name: 'AlbumUserRole', default: AlbumUserRole.Editor })
   role?: AlbumUserRole;
 }
 
@@ -29,12 +27,11 @@ export class AddUsersDto {
   albumUsers!: AlbumUserAddDto[];
 }
 
-class AlbumUserCreateDto {
+export class AlbumUserCreateDto {
   @ValidateUUID()
   userId!: string;
 
-  @IsEnum(AlbumUserRole)
-  @ApiProperty({ enum: AlbumUserRole, enumName: 'AlbumUserRole' })
+  @ValidateEnum({ enum: AlbumUserRole, name: 'AlbumUserRole' })
   role!: AlbumUserRole;
 }
 
@@ -72,9 +69,7 @@ export class UpdateAlbumDto {
   @ValidateBoolean({ optional: true })
   isActivityEnabled?: boolean;
 
-  @IsEnum(AssetOrder)
-  @Optional()
-  @ApiProperty({ enum: AssetOrder, enumName: 'AssetOrder' })
+  @ValidateEnum({ enum: AssetOrder, name: 'AssetOrder', optional: true })
   order?: AssetOrder;
 }
 
@@ -108,14 +103,13 @@ export class AlbumStatisticsResponseDto {
 }
 
 export class UpdateAlbumUserDto {
-  @IsEnum(AlbumUserRole)
-  @ApiProperty({ enum: AlbumUserRole, enumName: 'AlbumUserRole' })
+  @ValidateEnum({ enum: AlbumUserRole, name: 'AlbumUserRole' })
   role!: AlbumUserRole;
 }
 
 export class AlbumUserResponseDto {
   user!: UserResponseDto;
-  @ApiProperty({ enum: AlbumUserRole, enumName: 'AlbumUserRole' })
+  @ValidateEnum({ enum: AlbumUserRole, name: 'AlbumUserRole' })
   role!: AlbumUserRole;
 }
 
@@ -138,19 +132,32 @@ export class AlbumResponseDto {
   startDate?: Date;
   endDate?: Date;
   isActivityEnabled!: boolean;
-  @Optional()
-  @ApiProperty({ enumName: 'AssetOrder', enum: AssetOrder })
+  @ValidateEnum({ enum: AssetOrder, name: 'AssetOrder', optional: true })
   order?: AssetOrder;
 }
 
-export const mapAlbum = (entity: AlbumEntity, withAssets: boolean, auth?: AuthDto): AlbumResponseDto => {
-  const sharedUsers: UserResponseDto[] = [];
+export type MapAlbumDto = {
+  albumUsers?: AlbumUser[];
+  assets?: MapAsset[];
+  sharedLinks?: AuthSharedLink[];
+  albumName: string;
+  description: string;
+  albumThumbnailAssetId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  id: string;
+  ownerId: string;
+  owner: User;
+  isActivityEnabled: boolean;
+  order: AssetOrder;
+};
+
+export const mapAlbum = (entity: MapAlbumDto, withAssets: boolean, auth?: AuthDto): AlbumResponseDto => {
   const albumUsers: AlbumUserResponseDto[] = [];
 
   if (entity.albumUsers) {
     for (const albumUser of entity.albumUsers) {
       const user = mapUser(albumUser.user);
-      sharedUsers.push(user);
       albumUsers.push({
         user,
         role: albumUser.role,
@@ -162,11 +169,11 @@ export const mapAlbum = (entity: AlbumEntity, withAssets: boolean, auth?: AuthDt
 
   const assets = entity.assets || [];
 
-  const hasSharedLink = entity.sharedLinks?.length > 0;
-  const hasSharedUser = sharedUsers.length > 0;
+  const hasSharedLink = !!entity.sharedLinks && entity.sharedLinks.length > 0;
+  const hasSharedUser = albumUsers.length > 0;
 
-  let startDate = getAssetDateTime(assets.at(0));
-  let endDate = getAssetDateTime(assets.at(-1));
+  let startDate = assets.at(0)?.localDateTime;
+  let endDate = assets.at(-1)?.localDateTime;
   // Swap dates if start date is greater than end date.
   if (startDate && endDate && startDate > endDate) {
     [startDate, endDate] = [endDate, startDate];
@@ -193,5 +200,5 @@ export const mapAlbum = (entity: AlbumEntity, withAssets: boolean, auth?: AuthDt
   };
 };
 
-export const mapAlbumWithAssets = (entity: AlbumEntity) => mapAlbum(entity, true);
-export const mapAlbumWithoutAssets = (entity: AlbumEntity) => mapAlbum(entity, false);
+export const mapAlbumWithAssets = (entity: MapAlbumDto) => mapAlbum(entity, true);
+export const mapAlbumWithoutAssets = (entity: MapAlbumDto) => mapAlbum(entity, false);

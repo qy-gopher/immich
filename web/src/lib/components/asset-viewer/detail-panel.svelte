@@ -7,15 +7,19 @@
   import Icon from '$lib/components/elements/icon.svelte';
   import ChangeDate from '$lib/components/shared-components/change-date.svelte';
   import { AppRoute, QueryParameter, timeToLoadTheMap } from '$lib/constants';
+  import { authManager } from '$lib/managers/auth-manager.svelte';
+  import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
   import { boundingBoxesArray } from '$lib/stores/people.store';
   import { locale } from '$lib/stores/preferences.store';
   import { featureFlags } from '$lib/stores/server-config.store';
   import { preferences, user } from '$lib/stores/user.store';
-  import { getAssetThumbnailUrl, getPeopleThumbnailUrl, handlePromiseError, isSharedLink } from '$lib/utils';
+  import { getAssetThumbnailUrl, getPeopleThumbnailUrl, handlePromiseError } from '$lib/utils';
   import { delay, isFlipped } from '$lib/utils/asset-utils';
   import { getByteUnitString } from '$lib/utils/byte-units';
   import { handleError } from '$lib/utils/handle-error';
-  import { fromDateTimeOriginal, fromLocalDateTime } from '$lib/utils/timeline-util';
+  import { getMetadataSearchQuery } from '$lib/utils/metadata-search';
+  import { fromISODateTime, fromISODateTimeUTC } from '$lib/utils/timeline-util';
+  import { getParentPath } from '$lib/utils/tree-utils';
   import {
     AssetMediaSize,
     getAssetInfo,
@@ -24,8 +28,8 @@
     type AssetResponseDto,
     type ExifResponseDto,
   } from '@immich/sdk';
+  import { IconButton } from '@immich/ui';
   import {
-    mdiAccountOff,
     mdiCalendar,
     mdiCameraIris,
     mdiClose,
@@ -34,17 +38,16 @@
     mdiImageOutline,
     mdiInformationOutline,
     mdiPencil,
+    mdiPlus,
   } from '@mdi/js';
   import { DateTime } from 'luxon';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
   import ImageThumbnail from '../assets/thumbnail/image-thumbnail.svelte';
-  import CircleIconButton from '../elements/buttons/circle-icon-button.svelte';
   import PersonSidePanel from '../faces-page/person-side-panel.svelte';
   import LoadingSpinner from '../shared-components/loading-spinner.svelte';
   import UserAvatar from '../shared-components/user-avatar.svelte';
   import AlbumListItemDetails from './album-list-item-details.svelte';
-  import Portal from '$lib/components/shared-components/portal/portal.svelte';
 
   interface Props {
     asset: AssetResponseDto;
@@ -82,7 +85,7 @@
 
   const handleNewAsset = async (newAsset: AssetResponseDto) => {
     // TODO: check if reloading asset data is necessary
-    if (newAsset.id && !isSharedLink()) {
+    if (newAsset.id && !authManager.key) {
       const data = await getAssetInfo({ id: asset.id });
       people = data?.people || [];
       unassignedFaces = data?.unassignedFaces || [];
@@ -110,8 +113,8 @@
   let timeZone = $derived(asset.exifInfo?.timeZone);
   let dateTime = $derived(
     timeZone && asset.exifInfo?.dateTimeOriginal
-      ? fromDateTimeOriginal(asset.exifInfo.dateTimeOriginal, timeZone)
-      : fromLocalDateTime(asset.localDateTime),
+      ? fromISODateTime(asset.exifInfo.dateTimeOriginal, timeZone)
+      : fromISODateTimeUTC(asset.localDateTime),
   );
 
   const getMegapixel = (width: number, height: number): number | undefined => {
@@ -135,7 +138,7 @@
   const getAssetFolderHref = (asset: AssetResponseDto) => {
     const folderUrl = new URL(AppRoute.FOLDERS, globalThis.location.href);
     // Remove the last part of the path to get the parent path
-    const assetParentPath = asset.originalPath.split('/').slice(0, -1).join('/');
+    const assetParentPath = getParentPath(asset.originalPath);
     folderUrl.searchParams.set(QueryParameter.PATH, assetParentPath);
     return folderUrl.href;
   };
@@ -154,9 +157,16 @@
   }
 </script>
 
-<section class="relative p-2 dark:bg-immich-dark-bg dark:text-immich-dark-fg">
+<section class="relative p-2">
   <div class="flex place-items-center gap-2">
-    <CircleIconButton icon={mdiClose} title={$t('close')} onclick={onClose} />
+    <IconButton
+      icon={mdiClose}
+      aria-label={$t('close')}
+      onclick={onClose}
+      shape="round"
+      color="secondary"
+      variant="ghost"
+    />
     <p class="text-lg text-immich-fg dark:text-immich-dark-fg">{$t('info')}</p>
   </div>
 
@@ -185,37 +195,43 @@
   <DetailPanelDescription {asset} {isOwner} />
   <DetailPanelRating {asset} {isOwner} />
 
-  {#if (!isSharedLink() && unassignedFaces.length > 0) || people.length > 0}
+  {#if !authManager.key && isOwner}
     <section class="px-4 pt-4 text-sm">
       <div class="flex h-10 w-full items-center justify-between">
         <h2>{$t('people').toUpperCase()}</h2>
         <div class="flex gap-2 items-center">
-          {#if unassignedFaces.length > 0}
-            <Icon
-              ariaLabel={$t('asset_has_unassigned_faces')}
-              title={$t('asset_has_unassigned_faces')}
-              color="currentColor"
-              path={mdiAccountOff}
-              size="24"
-            />
-          {/if}
           {#if people.some((person) => person.isHidden)}
-            <CircleIconButton
-              title={$t('show_hidden_people')}
+            <IconButton
+              aria-label={$t('show_hidden_people')}
               icon={showingHiddenPeople ? mdiEyeOff : mdiEye}
-              padding="1"
-              buttonSize="32"
+              size="medium"
+              shape="round"
+              color="secondary"
+              variant="ghost"
               onclick={() => (showingHiddenPeople = !showingHiddenPeople)}
             />
           {/if}
-          <CircleIconButton
-            title={$t('edit_people')}
-            icon={mdiPencil}
-            padding="1"
-            size="20"
-            buttonSize="32"
-            onclick={() => (showEditFaces = true)}
+          <IconButton
+            aria-label={$t('tag_people')}
+            icon={mdiPlus}
+            size="medium"
+            shape="round"
+            color="secondary"
+            variant="ghost"
+            onclick={() => (isFaceEditMode.value = !isFaceEditMode.value)}
           />
+
+          {#if people.length > 0 || unassignedFaces.length > 0}
+            <IconButton
+              aria-label={$t('edit_people')}
+              icon={mdiPencil}
+              size="medium"
+              shape="round"
+              color="secondary"
+              variant="ghost"
+              onclick={() => (showEditFaces = true)}
+            />
+          {/if}
         </div>
       </div>
 
@@ -292,7 +308,7 @@
     {#if dateTime}
       <button
         type="button"
-        class="flex w-full text-left justify-between place-items-start gap-4 py-4"
+        class="flex w-full text-start justify-between place-items-start gap-4 py-4"
         onclick={() => (isOwner ? (isShowChangeDate = true) : null)}
         title={isOwner ? $t('edit_date') : ''}
         class:hover:dark:text-immich-dark-primary={isOwner}
@@ -350,41 +366,41 @@
     {/if}
 
     {#if isShowChangeDate}
-      <Portal>
-        <ChangeDate
-          initialDate={dateTime}
-          initialTimeZone={timeZone ?? ''}
-          onConfirm={handleConfirmChangeDate}
-          onCancel={() => (isShowChangeDate = false)}
-        />
-      </Portal>
+      <ChangeDate
+        initialDate={dateTime}
+        initialTimeZone={timeZone ?? ''}
+        onConfirm={handleConfirmChangeDate}
+        onCancel={() => (isShowChangeDate = false)}
+      />
     {/if}
 
     <div class="flex gap-4 py-4">
       <div><Icon path={mdiImageOutline} size="24" /></div>
 
       <div>
-        <p class="break-all flex place-items-center gap-2">
+        <p class="break-all flex place-items-center gap-2 whitespace-pre-wrap">
           {asset.originalFileName}
           {#if isOwner}
-            <CircleIconButton
+            <IconButton
               icon={mdiInformationOutline}
-              title={$t('show_file_location')}
-              size="16"
-              padding="2"
+              aria-label={$t('show_file_location')}
+              size="small"
+              shape="round"
+              color="secondary"
+              variant="ghost"
               onclick={toggleAssetPath}
             />
           {/if}
         </p>
         {#if showAssetPath}
-          <a href={getAssetFolderHref(asset)} title={$t('go_to_folder')}>
-            <p
-              class="text-xs opacity-50 break-all pb-2 hover:dark:text-immich-dark-primary hover:text-immich-primary"
-              transition:slide={{ duration: 250 }}
-            >
+          <p
+            class="text-xs opacity-50 break-all pb-2 hover:dark:text-immich-dark-primary hover:text-immich-primary"
+            transition:slide={{ duration: 250 }}
+          >
+            <a href={getAssetFolderHref(asset)} title={$t('go_to_folder')} class="whitespace-pre-wrap">
               {asset.originalPath}
-            </p>
-          </a>
+            </a>
+          </p>
         {/if}
         {#if (asset.exifInfo?.exifImageHeight && asset.exifInfo?.exifImageWidth) || asset.exifInfo?.fileSizeInByte}
           <div class="flex gap-2 text-sm">
@@ -410,7 +426,36 @@
         <div><Icon path={mdiCameraIris} size="24" /></div>
 
         <div>
-          <p>{asset.exifInfo.make || ''} {asset.exifInfo.model || ''}</p>
+          {#if asset.exifInfo?.make || asset.exifInfo?.model}
+            <p>
+              <a
+                href="{AppRoute.SEARCH}?{getMetadataSearchQuery({
+                  ...(asset.exifInfo?.make ? { make: asset.exifInfo.make } : {}),
+                  ...(asset.exifInfo?.model ? { model: asset.exifInfo.model } : {}),
+                })}"
+                title="{$t('search_for')} {asset.exifInfo.make || ''} {asset.exifInfo.model || ''}"
+                class="hover:dark:text-immich-dark-primary hover:text-immich-primary"
+              >
+                {asset.exifInfo.make || ''}
+                {asset.exifInfo.model || ''}
+              </a>
+            </p>
+          {/if}
+
+          {#if asset.exifInfo?.lensModel}
+            <div class="flex gap-2 text-sm">
+              <p>
+                <a
+                  href="{AppRoute.SEARCH}?{getMetadataSearchQuery({ lensModel: asset.exifInfo.lensModel })}"
+                  title="{$t('search_for')} {asset.exifInfo.lensModel}"
+                  class="hover:dark:text-immich-dark-primary hover:text-immich-primary line-clamp-1"
+                >
+                  {asset.exifInfo.lensModel}
+                </a>
+              </p>
+            </div>
+          {/if}
+
           <div class="flex gap-2 text-sm">
             {#if asset.exifInfo?.fNumber}
               <p>ƒ/{asset.exifInfo.fNumber.toLocaleString($locale)}</p>
@@ -460,9 +505,11 @@
           },
         ]}
         center={latlng}
+        showSettings={false}
         zoom={12.5}
         simplified
         useLocationPin
+        showSimpleControls={!showEditFaces}
         onOpenInMapView={() => goto(`${AppRoute.MAP}#12.5/${latlng.lat}/${latlng.lng}`)}
       >
         {#snippet popup({ marker })}
@@ -503,7 +550,7 @@
 {#if albums.length > 0}
   <section class="px-6 pt-6 dark:text-immich-dark-fg">
     <p class="pb-4 text-sm">{$t('appears_in').toUpperCase()}</p>
-    {#each albums as album}
+    {#each albums as album (album.id)}
       <a href="{AppRoute.ALBUMS}/{album.id}">
         <div class="flex gap-4 pt-2 hover:cursor-pointer items-center">
           <div>

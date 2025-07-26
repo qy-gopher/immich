@@ -1,10 +1,13 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/entities/asset.entity.dart';
 import 'package:immich_mobile/models/memories/memory.model.dart';
+import 'package:immich_mobile/providers/asset_viewer/current_asset.provider.dart';
+import 'package:immich_mobile/providers/asset_viewer/video_player_value_provider.dart';
 import 'package:immich_mobile/providers/haptic_feedback.provider.dart';
 import 'package:immich_mobile/widgets/common/immich_image.dart';
 import 'package:immich_mobile/widgets/memories/memory_bottom_info.dart';
@@ -13,6 +16,8 @@ import 'package:immich_mobile/widgets/memories/memory_epilogue.dart';
 import 'package:immich_mobile/widgets/memories/memory_progress_indicator.dart';
 
 @RoutePage()
+
+/// Expects [currentAssetProvider] to be set before navigating to this page
 class MemoryPage extends HookConsumerWidget {
   final List<Memory> memories;
   final int memoryIndex;
@@ -32,10 +37,10 @@ class MemoryPage extends HookConsumerWidget {
       "${currentAssetPage.value + 1}|${currentMemory.value.assets.length}",
     );
     const bgColor = Colors.black;
+    final currentAsset = useState<Asset?>(null);
 
     /// The list of all of the asset page controllers
-    final memoryAssetPageControllers =
-        List.generate(memories.length, (i) => usePageController());
+    final memoryAssetPageControllers = List.generate(memories.length, (i) => usePageController());
 
     /// The main vertically scrolling page controller with each list of memories
     final memoryPageController = usePageController(initialPage: memoryIndex);
@@ -56,11 +61,38 @@ class MemoryPage extends HookConsumerWidget {
       );
     }
 
+    void toPreviousMemory() {
+      if (currentMemoryIndex.value > 0) {
+        // Move to the previous memory page
+        memoryPageController.previousPage(
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeIn,
+        );
+
+        // Wait for the next frame to ensure the page is built
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          final previousIndex = currentMemoryIndex.value - 1;
+          final previousMemoryController = memoryAssetPageControllers[previousIndex];
+
+          // Ensure the controller is attached
+          if (previousMemoryController.hasClients) {
+            previousMemoryController.jumpToPage(memories[previousIndex].assets.length - 1);
+          } else {
+            // Wait for the next frame until it is attached
+            SchedulerBinding.instance.addPostFrameCallback((_) {
+              if (previousMemoryController.hasClients) {
+                previousMemoryController.jumpToPage(memories[previousIndex].assets.length - 1);
+              }
+            });
+          }
+        });
+      }
+    }
+
     toNextAsset(int currentAssetIndex) {
       if (currentAssetIndex + 1 < currentMemory.value.assets.length) {
         // Go to the next asset
-        PageController controller =
-            memoryAssetPageControllers[currentMemoryIndex.value];
+        PageController controller = memoryAssetPageControllers[currentMemoryIndex.value];
 
         controller.nextPage(
           curve: Curves.easeInOut,
@@ -72,9 +104,23 @@ class MemoryPage extends HookConsumerWidget {
       }
     }
 
+    toPreviousAsset(int currentAssetIndex) {
+      if (currentAssetIndex > 0) {
+        // Go to the previous asset
+        PageController controller = memoryAssetPageControllers[currentMemoryIndex.value];
+
+        controller.previousPage(
+          curve: Curves.easeInOut,
+          duration: const Duration(milliseconds: 500),
+        );
+      } else {
+        // Go to the previous memory since we are at the end of our assets
+        toPreviousMemory();
+      }
+    }
+
     updateProgressText() {
-      assetProgress.value =
-          "${currentAssetPage.value + 1}|${currentMemory.value.assets.length}";
+      assetProgress.value = "${currentAssetPage.value + 1}|${currentMemory.value.assets.length}";
     }
 
     /// Downloads and caches the image for the asset at this [currentMemory]'s index
@@ -127,18 +173,25 @@ class MemoryPage extends HookConsumerWidget {
 
     // Precache the next page right away if we are on the first page
     if (currentAssetPage.value == 0) {
-      Future.delayed(const Duration(milliseconds: 200))
-          .then((_) => precacheAsset(1));
+      Future.delayed(const Duration(milliseconds: 200)).then((_) => precacheAsset(1));
     }
 
     Future<void> onAssetChanged(int otherIndex) async {
       ref.read(hapticFeedbackProvider.notifier).selectionClick();
       currentAssetPage.value = otherIndex;
       updateProgressText();
+
       // Wait for page change animation to finish
       await Future.delayed(const Duration(milliseconds: 400));
       // And then precache the next asset
       await precacheAsset(otherIndex + 1);
+
+      final asset = currentMemory.value.assets[otherIndex];
+      currentAsset.value = asset;
+      ref.read(currentAssetProvider.notifier).set(asset);
+      if (asset.isVideo || asset.isMotionPhoto) {
+        ref.read(videoPlaybackValueProvider.notifier).reset();
+      }
     }
 
     /* Notification listener is used instead of OnPageChanged callback since OnPageChanged is called
@@ -151,12 +204,10 @@ class MemoryPage extends HookConsumerWidget {
         // maxScrollExtend contains the sum of horizontal pixels of all assets for depth = 1
         // or sum of vertical pixels of all memories for depth = 0
         if (notification is ScrollUpdateNotification) {
-          final isEpiloguePage =
-              (memoryPageController.page?.floor() ?? 0) >= memories.length;
+          final isEpiloguePage = (memoryPageController.page?.floor() ?? 0) >= memories.length;
 
           final offset = notification.metrics.pixels;
-          if (isEpiloguePage &&
-              (offset > notification.metrics.maxScrollExtent + 150)) {
+          if (isEpiloguePage && (offset > notification.metrics.maxScrollExtent + 150)) {
             context.maybePop();
             return true;
           }
@@ -235,19 +286,42 @@ class MemoryPage extends HookConsumerWidget {
                           itemCount: memories[mIndex].assets.length,
                           itemBuilder: (context, index) {
                             final asset = memories[mIndex].assets[index];
-                            return GestureDetector(
-                              behavior: HitTestBehavior.translucent,
-                              onTap: () {
-                                toNextAsset(index);
-                              },
-                              child: Container(
-                                color: Colors.black,
-                                child: MemoryCard(
-                                  asset: asset,
-                                  title: memories[mIndex].title,
-                                  showTitle: index == 0,
+                            return Stack(
+                              children: [
+                                Container(
+                                  color: Colors.black,
+                                  child: MemoryCard(
+                                    asset: asset,
+                                    title: memories[mIndex].title,
+                                    showTitle: index == 0,
+                                  ),
                                 ),
-                              ),
+                                Positioned.fill(
+                                  child: Row(
+                                    children: [
+                                      // Left side of the screen
+                                      Expanded(
+                                        child: GestureDetector(
+                                          behavior: HitTestBehavior.translucent,
+                                          onTap: () {
+                                            toPreviousAsset(index);
+                                          },
+                                        ),
+                                      ),
+
+                                      // Right side of the screen
+                                      Expanded(
+                                        child: GestureDetector(
+                                          behavior: HitTestBehavior.translucent,
+                                          onTap: () {
+                                            toNextAsset(index);
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             );
                           },
                         ),
@@ -266,7 +340,7 @@ class MemoryPage extends HookConsumerWidget {
                               );
                             },
                             shape: const CircleBorder(),
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             elevation: 0,
                             child: const Icon(
                               Icons.close_rounded,
@@ -274,6 +348,15 @@ class MemoryPage extends HookConsumerWidget {
                             ),
                           ),
                         ),
+                        if (currentAsset.value != null && currentAsset.value!.isVideo)
+                          Positioned(
+                            bottom: 24,
+                            right: 32,
+                            child: Icon(
+                              Icons.videocam_outlined,
+                              color: Colors.grey[200],
+                            ),
+                          ),
                       ],
                     ),
                   ),

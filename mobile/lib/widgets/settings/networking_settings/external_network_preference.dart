@@ -2,11 +2,12 @@ import 'dart:convert';
 
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:flutter_hooks/flutter_hooks.dart' hide Store;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:immich_mobile/domain/models/store.model.dart';
+import 'package:immich_mobile/entities/store.entity.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/models/auth/auxilary_endpoint.model.dart';
-import 'package:immich_mobile/entities/store.entity.dart' as db_store;
 import 'package:immich_mobile/widgets/settings/networking_settings/endpoint_input.dart';
 
 class ExternalNetworkPreference extends HookConsumerWidget {
@@ -16,29 +17,26 @@ class ExternalNetworkPreference extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final entries =
-        useState([AuxilaryEndpoint(url: '', status: AuxCheckStatus.unknown)]);
+    final entries = useState(
+      [const AuxilaryEndpoint(url: '', status: AuxCheckStatus.unknown)],
+    );
     final canSave = useState(false);
 
     saveEndpointList() {
-      canSave.value =
-          entries.value.every((e) => e.status == AuxCheckStatus.valid);
+      canSave.value = entries.value.every((e) => e.status == AuxCheckStatus.valid);
 
-      final endpointList = entries.value
-          .where((url) => url.status == AuxCheckStatus.valid)
-          .toList();
+      final endpointList = entries.value.where((url) => url.status == AuxCheckStatus.valid).toList();
 
       final jsonString = jsonEncode(endpointList);
 
-      db_store.Store.put(
-        db_store.StoreKey.externalEndpointList,
+      Store.put(
+        StoreKey.externalEndpointList,
         jsonString,
       );
     }
 
     updateValidationStatus(String url, int index, AuxCheckStatus status) {
-      entries.value[index] =
-          entries.value[index].copyWith(url: url, status: status);
+      entries.value[index] = entries.value[index].copyWith(url: url, status: status);
 
       saveEndpointList();
     }
@@ -71,7 +69,7 @@ class ExternalNetworkPreference extends HookConsumerWidget {
         builder: (BuildContext context, Widget? child) {
           return Material(
             color: context.colorScheme.surfaceContainerHighest,
-            shadowColor: context.colorScheme.primary.withOpacity(0.2),
+            shadowColor: context.colorScheme.primary.withValues(alpha: 0.2),
             child: child,
           );
         },
@@ -81,16 +79,14 @@ class ExternalNetworkPreference extends HookConsumerWidget {
 
     useEffect(
       () {
-        final jsonString =
-            db_store.Store.tryGet(db_store.StoreKey.externalEndpointList);
+        final jsonString = Store.tryGet(StoreKey.externalEndpointList);
 
         if (jsonString == null) {
           return null;
         }
 
         final List<dynamic> jsonList = jsonDecode(jsonString);
-        entries.value =
-            jsonList.map((e) => AuxilaryEndpoint.fromJson(e)).toList();
+        entries.value = jsonList.map((e) => AuxilaryEndpoint.fromJson(e)).toList();
         return null;
       },
       const [],
@@ -116,7 +112,7 @@ class ExternalNetworkPreference extends HookConsumerWidget {
               child: Icon(
                 Icons.dns_rounded,
                 size: 120,
-                color: context.primaryColor.withOpacity(0.05),
+                color: context.primaryColor.withValues(alpha: 0.05),
               ),
             ),
             ListView(
@@ -169,7 +165,7 @@ class ExternalNetworkPreference extends HookConsumerWidget {
                           ? () {
                               entries.value = [
                                 ...entries.value,
-                                AuxilaryEndpoint(
+                                const AuxilaryEndpoint(
                                   url: '',
                                   status: AuxCheckStatus.unknown,
                                 ),

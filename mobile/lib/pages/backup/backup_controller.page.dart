@@ -30,11 +30,8 @@ class BackupControllerPage extends HookConsumerWidget {
     final hasAnyAlbum = backupState.selectedBackupAlbums.isNotEmpty;
     final didGetBackupInfo = useState(false);
 
-    bool hasExclusiveAccess =
-        backupState.backupProgress != BackUpProgressEnum.inBackground;
-    bool shouldBackup = backupState.allUniqueAssets.length -
-                    backupState.selectedAlbumsBackupAssetsIds.length ==
-                0 ||
+    bool hasExclusiveAccess = backupState.backupProgress != BackUpProgressEnum.inBackground;
+    bool shouldBackup = backupState.allUniqueAssets.length - backupState.selectedAlbumsBackupAssetsIds.length == 0 ||
             !hasExclusiveAccess
         ? false
         : true;
@@ -48,9 +45,7 @@ class BackupControllerPage extends HookConsumerWidget {
           ref.watch(iOSBackgroundSettingsProvider.notifier).refresh();
         }
 
-        ref
-            .watch(websocketProvider.notifier)
-            .stopListenToEvent('on_upload_success');
+        ref.watch(websocketProvider.notifier).stopListenToEvent('on_upload_success');
 
         return () {
           WakelockPlus.disable();
@@ -61,8 +56,7 @@ class BackupControllerPage extends HookConsumerWidget {
 
     useEffect(
       () {
-        if (backupState.backupProgress == BackUpProgressEnum.idle &&
-            !didGetBackupInfo.value) {
+        if (backupState.backupProgress == BackUpProgressEnum.idle && !didGetBackupInfo.value) {
           ref.watch(backupProvider.notifier).getBackupInfo();
           didGetBackupInfo.value = true;
         }
@@ -91,7 +85,7 @@ class BackupControllerPage extends HookConsumerWidget {
       if (albums.isNotEmpty) {
         for (var album in albums) {
           if (album.name == "Recent" || album.name == "Recents") {
-            text += "${album.name} (${'backup_all'.tr()}), ";
+            text += "${album.name} (${'all'.tr()}), ";
           } else {
             text += "${album.name}, ";
           }
@@ -147,7 +141,9 @@ class BackupControllerPage extends HookConsumerWidget {
         padding: const EdgeInsets.only(top: 8.0),
         child: Card(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: const BorderRadius.all(
+              Radius.circular(20),
+            ),
             side: BorderSide(
               color: context.colorScheme.outlineVariant,
               width: 1,
@@ -181,14 +177,12 @@ class BackupControllerPage extends HookConsumerWidget {
               onPressed: () async {
                 await context.pushRoute(const BackupAlbumSelectionRoute());
                 // waited until returning from selection
-                await ref
-                    .read(backupProvider.notifier)
-                    .backupAlbumSelectionDone();
+                await ref.read(backupProvider.notifier).backupAlbumSelectionDone();
                 // waited until backup albums are stored in DB
                 ref.read(albumProvider.notifier).refreshDeviceAlbums();
               },
               child: const Text(
-                "backup_controller_page_select",
+                "select",
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                 ),
@@ -201,8 +195,7 @@ class BackupControllerPage extends HookConsumerWidget {
 
     void startBackup() {
       ref.watch(errorBackupListProvider.notifier).empty();
-      if (ref.watch(backupProvider).backupProgress !=
-          BackUpProgressEnum.inBackground) {
+      if (ref.watch(backupProvider).backupProgress != BackUpProgressEnum.inBackground) {
         ref.watch(backupProvider.notifier).startBackupProcess();
       }
     }
@@ -214,8 +207,7 @@ class BackupControllerPage extends HookConsumerWidget {
         ),
         child: Container(
           child: backupState.backupProgress == BackUpProgressEnum.inProgress ||
-                  backupState.backupProgress ==
-                      BackUpProgressEnum.manualInProgress
+                  backupState.backupProgress == BackUpProgressEnum.manualInProgress
               ? ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     foregroundColor: Colors.grey[50],
@@ -223,15 +215,14 @@ class BackupControllerPage extends HookConsumerWidget {
                     // padding: const EdgeInsets.all(14),
                   ),
                   onPressed: () {
-                    if (backupState.backupProgress ==
-                        BackUpProgressEnum.manualInProgress) {
+                    if (backupState.backupProgress == BackUpProgressEnum.manualInProgress) {
                       ref.read(manualUploadProvider.notifier).cancelBackup();
                     } else {
                       ref.read(backupProvider.notifier).cancelBackup();
                     }
                   },
                   child: const Text(
-                    "backup_controller_page_cancel",
+                    "cancel",
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -309,7 +300,7 @@ class BackupControllerPage extends HookConsumerWidget {
                   ? [
                       buildFolderSelectionTile(),
                       BackupInfoCard(
-                        title: "backup_controller_page_total".tr(),
+                        title: "total".tr(),
                         subtitle: "backup_controller_page_total_sub".tr(),
                         info: ref.watch(backupProvider).availableAlbums.isEmpty
                             ? "..."

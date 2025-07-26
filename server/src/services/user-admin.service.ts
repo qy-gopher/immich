@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { SALT_ROUNDS } from 'src/constants';
+import { AssetStatsDto, AssetStatsResponseDto, mapStats } from 'src/dtos/asset.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
 import { UserPreferencesResponseDto, UserPreferencesUpdateDto, mapPreferences } from 'src/dtos/user-preferences.dto';
 import {
@@ -10,16 +11,18 @@ import {
   UserAdminUpdateDto,
   mapUserAdmin,
 } from 'src/dtos/user.dto';
-import { UserMetadataKey, UserStatus } from 'src/enum';
-import { JobName } from 'src/interfaces/job.interface';
-import { UserFindOptions } from 'src/interfaces/user.interface';
+import { JobName, UserMetadataKey, UserStatus } from 'src/enum';
+import { UserFindOptions } from 'src/repositories/user.repository';
 import { BaseService } from 'src/services/base.service';
 import { getPreferences, getPreferencesPartial, mergePreferences } from 'src/utils/preferences';
 
 @Injectable()
 export class UserAdminService extends BaseService {
   async search(auth: AuthDto, dto: UserAdminSearchDto): Promise<UserAdminResponseDto[]> {
-    const users = await this.userRepository.getList({ withDeleted: dto.withDeleted });
+    const users = await this.userRepository.getList({
+      id: dto.id,
+      withDeleted: dto.withDeleted,
+    });
     return users.map((user) => mapUserAdmin(user));
   }
 
@@ -32,7 +35,7 @@ export class UserAdminService extends BaseService {
 
     const user = await this.createUser(userDto);
 
-    await this.eventRepository.emit('user.signup', {
+    await this.eventRepository.emit('UserSignup', {
       notify: !!notify,
       id: user.id,
       tempPassword: user.shouldChangePassword ? userDto.password : undefined,
@@ -48,6 +51,10 @@ export class UserAdminService extends BaseService {
 
   async update(auth: AuthDto, id: string, dto: UserAdminUpdateDto): Promise<UserAdminResponseDto> {
     const user = await this.findOrFail(id, {});
+
+    if (dto.isAdmin !== undefined && dto.isAdmin !== auth.user.isAdmin && auth.user.id === id) {
+      throw new BadRequestException('Admin status can only be changed by another admin');
+    }
 
     if (dto.quotaSizeInBytes && user.quotaSizeInBytes !== dto.quotaSizeInBytes) {
       await this.userRepository.syncUsage(id);
@@ -71,6 +78,10 @@ export class UserAdminService extends BaseService {
       dto.password = await this.cryptoRepository.hashBcrypt(dto.password, SALT_ROUNDS);
     }
 
+    if (dto.pinCode) {
+      dto.pinCode = await this.cryptoRepository.hashBcrypt(dto.pinCode, SALT_ROUNDS);
+    }
+
     if (dto.storageLabel === '') {
       dto.storageLabel = null;
     }
@@ -82,18 +93,18 @@ export class UserAdminService extends BaseService {
 
   async delete(auth: AuthDto, id: string, dto: UserAdminDeleteDto): Promise<UserAdminResponseDto> {
     const { force } = dto;
-    const { isAdmin } = await this.findOrFail(id, {});
-    if (isAdmin) {
-      throw new ForbiddenException('Cannot delete admin user');
+    await this.findOrFail(id, {});
+    if (auth.user.id === id) {
+      throw new ForbiddenException('Cannot delete your own account');
     }
 
     await this.albumRepository.softDeleteAll(id);
 
-    const status = force ? UserStatus.REMOVING : UserStatus.DELETED;
+    const status = force ? UserStatus.Removing : UserStatus.Deleted;
     const user = await this.userRepository.update(id, { status, deletedAt: new Date() });
 
     if (force) {
-      await this.jobRepository.queue({ name: JobName.USER_DELETION, data: { id: user.id, force } });
+      await this.jobRepository.queue({ name: JobName.UserDelete, data: { id: user.id, force } });
     }
 
     return mapUserAdmin(user);
@@ -102,26 +113,32 @@ export class UserAdminService extends BaseService {
   async restore(auth: AuthDto, id: string): Promise<UserAdminResponseDto> {
     await this.findOrFail(id, { withDeleted: true });
     await this.albumRepository.restoreAll(id);
-    const user = await this.userRepository.update(id, { deletedAt: null, status: UserStatus.ACTIVE });
+    const user = await this.userRepository.restore(id);
     return mapUserAdmin(user);
   }
 
+  async getStatistics(auth: AuthDto, id: string, dto: AssetStatsDto): Promise<AssetStatsResponseDto> {
+    const stats = await this.assetRepository.getStatistics(id, dto);
+    return mapStats(stats);
+  }
+
   async getPreferences(auth: AuthDto, id: string): Promise<UserPreferencesResponseDto> {
-    const user = await this.findOrFail(id, { withDeleted: false });
-    const preferences = getPreferences(user);
-    return mapPreferences(preferences);
+    await this.findOrFail(id, { withDeleted: true });
+    const metadata = await this.userRepository.getMetadata(id);
+    return mapPreferences(getPreferences(metadata));
   }
 
   async updatePreferences(auth: AuthDto, id: string, dto: UserPreferencesUpdateDto) {
-    const user = await this.findOrFail(id, { withDeleted: false });
-    const preferences = mergePreferences(user, dto);
+    await this.findOrFail(id, { withDeleted: false });
+    const metadata = await this.userRepository.getMetadata(id);
+    const newPreferences = mergePreferences(getPreferences(metadata), dto);
 
-    await this.userRepository.upsertMetadata(user.id, {
-      key: UserMetadataKey.PREFERENCES,
-      value: getPreferencesPartial(user, preferences),
+    await this.userRepository.upsertMetadata(id, {
+      key: UserMetadataKey.Preferences,
+      value: getPreferencesPartial(newPreferences),
     });
 
-    return mapPreferences(preferences);
+    return mapPreferences(newPreferences);
   }
 
   private async findOrFail(id: string, options: UserFindOptions) {

@@ -1,27 +1,15 @@
 import { getQueueToken } from '@nestjs/bullmq';
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ModuleRef, Reflector } from '@nestjs/core';
-import { SchedulerRegistry } from '@nestjs/schedule';
 import { JobsOptions, Queue, Worker } from 'bullmq';
 import { ClassConstructor } from 'class-transformer';
 import { setTimeout } from 'node:timers/promises';
 import { JobConfig } from 'src/decorators';
-import { MetadataKey } from 'src/enum';
-import { IConfigRepository } from 'src/interfaces/config.interface';
-import { IEventRepository } from 'src/interfaces/event.interface';
-import {
-  IEntityJob,
-  IJobRepository,
-  JobCounts,
-  JobItem,
-  JobName,
-  JobOf,
-  JobStatus,
-  QueueCleanType,
-  QueueName,
-  QueueStatus,
-} from 'src/interfaces/job.interface';
-import { ILoggerRepository } from 'src/interfaces/logger.interface';
+import { JobName, JobStatus, MetadataKey, QueueCleanType, QueueName } from 'src/enum';
+import { ConfigRepository } from 'src/repositories/config.repository';
+import { EventRepository } from 'src/repositories/event.repository';
+import { LoggingRepository } from 'src/repositories/logging.repository';
+import { JobCounts, JobItem, JobOf, QueueStatus } from 'src/types';
 import { getKeyByValue, getMethodNames, ImmichStartupError } from 'src/utils/misc';
 
 type JobMapItem = {
@@ -32,21 +20,20 @@ type JobMapItem = {
 };
 
 @Injectable()
-export class JobRepository implements IJobRepository {
+export class JobRepository {
   private workers: Partial<Record<QueueName, Worker>> = {};
   private handlers: Partial<Record<JobName, JobMapItem>> = {};
 
   constructor(
     private moduleRef: ModuleRef,
-    private schedulerRegistry: SchedulerRegistry,
-    @Inject(IConfigRepository) private configRepository: IConfigRepository,
-    @Inject(IEventRepository) private eventRepository: IEventRepository,
-    @Inject(ILoggerRepository) private logger: ILoggerRepository,
+    private configRepository: ConfigRepository,
+    private eventRepository: EventRepository,
+    private logger: LoggingRepository,
   ) {
     this.logger.setContext(JobRepository.name);
   }
 
-  setup({ services }: { services: ClassConstructor<unknown>[] }) {
+  setup(services: ClassConstructor<unknown>[]) {
     const reflector = this.moduleRef.get(Reflector, { strict: false });
 
     // discovery
@@ -54,7 +41,7 @@ export class JobRepository implements IJobRepository {
       const instance = this.moduleRef.get<any>(Service);
       for (const methodName of getMethodNames(instance)) {
         const handler = instance[methodName];
-        const config = reflector.get<JobConfig>(MetadataKey.JOB_CONFIG, handler);
+        const config = reflector.get<JobConfig>(MetadataKey.JobConfig, handler);
         if (!config) {
           continue;
         }
@@ -102,7 +89,7 @@ export class JobRepository implements IJobRepository {
       this.logger.debug(`Starting worker for queue: ${queueName}`);
       this.workers[queueName] = new Worker(
         queueName,
-        (job) => this.eventRepository.emit('job.start', queueName, job as JobItem),
+        (job) => this.eventRepository.emit('JobStart', queueName, job as JobItem),
         { ...bull.config, concurrency: 1 },
       );
     }
@@ -112,7 +99,7 @@ export class JobRepository implements IJobRepository {
     const item = this.handlers[name as JobName];
     if (!item) {
       this.logger.warn(`Skipping unknown job: "${name}"`);
-      return JobStatus.SKIPPED;
+      return JobStatus.Skipped;
     }
 
     return item.handler(data);
@@ -218,17 +205,20 @@ export class JobRepository implements IJobRepository {
 
   private getJobOptions(item: JobItem): JobsOptions | null {
     switch (item.name) {
-      case JobName.NOTIFY_ALBUM_UPDATE: {
-        return { jobId: item.data.id, delay: item.data?.delay };
+      case JobName.NotifyAlbumUpdate: {
+        return {
+          jobId: `${item.data.id}/${item.data.recipientId}`,
+          delay: item.data?.delay,
+        };
       }
-      case JobName.STORAGE_TEMPLATE_MIGRATION_SINGLE: {
+      case JobName.StorageTemplateMigrationSingle: {
         return { jobId: item.data.id };
       }
-      case JobName.GENERATE_PERSON_THUMBNAIL: {
+      case JobName.PersonGenerateThumbnail: {
         return { priority: 1 };
       }
-      case JobName.QUEUE_FACIAL_RECOGNITION: {
-        return { jobId: JobName.QUEUE_FACIAL_RECOGNITION };
+      case JobName.FacialRecognitionQueueAll: {
+        return { jobId: JobName.FacialRecognitionQueueAll };
       }
       default: {
         return null;
@@ -240,19 +230,12 @@ export class JobRepository implements IJobRepository {
     return this.moduleRef.get<Queue>(getQueueToken(queue), { strict: false });
   }
 
-  public async removeJob(jobId: string, name: JobName): Promise<IEntityJob | undefined> {
-    const existingJob = await this.getQueue(this.getQueueName(name)).getJob(jobId);
-    if (!existingJob) {
-      return;
-    }
-    try {
+  /** @deprecated */
+  // todo: remove this when asset notifications no longer need it.
+  public async removeJob(name: JobName, jobID: string): Promise<void> {
+    const existingJob = await this.getQueue(this.getQueueName(name)).getJob(jobID);
+    if (existingJob) {
       await existingJob.remove();
-    } catch (error: any) {
-      if (error.message?.includes('Missing key for job')) {
-        return;
-      }
-      throw error;
     }
-    return existingJob.data;
   }
 }

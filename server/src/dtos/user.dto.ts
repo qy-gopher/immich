@@ -1,11 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsEmail, IsNotEmpty, IsNumber, IsPositive, IsString } from 'class-validator';
-import { UserMetadataEntity } from 'src/entities/user-metadata.entity';
-import { UserEntity } from 'src/entities/user.entity';
+import { IsEmail, IsNotEmpty, IsNumber, IsString, Min } from 'class-validator';
+import { User, UserAdmin } from 'src/database';
 import { UserAvatarColor, UserMetadataKey, UserStatus } from 'src/enum';
-import { getPreferences } from 'src/utils/preferences';
-import { Optional, ValidateBoolean, toEmail, toSanitized } from 'src/validation';
+import { UserMetadataItem } from 'src/types';
+import { Optional, PinCode, ValidateBoolean, ValidateEnum, ValidateUUID, toEmail, toSanitized } from 'src/validation';
 
 export class UserUpdateMeDto {
   @Optional()
@@ -23,6 +22,9 @@ export class UserUpdateMeDto {
   @IsString()
   @IsNotEmpty()
   name?: string;
+
+  @ValidateEnum({ enum: UserAvatarColor, name: 'UserAvatarColor', optional: true, nullable: true })
+  avatarColor?: UserAvatarColor | null;
 }
 
 export class UserResponseDto {
@@ -30,7 +32,7 @@ export class UserResponseDto {
   name!: string;
   email!: string;
   profileImagePath!: string;
-  @ApiProperty({ enumName: 'UserAvatarColor', enum: UserAvatarColor })
+  @ValidateEnum({ enum: UserAvatarColor, name: 'UserAvatarColor' })
   avatarColor!: UserAvatarColor;
   profileChangedAt!: Date;
 }
@@ -41,13 +43,21 @@ export class UserLicense {
   activatedAt!: Date;
 }
 
-export const mapUser = (entity: UserEntity): UserResponseDto => {
+const emailToAvatarColor = (email: string): UserAvatarColor => {
+  const values = Object.values(UserAvatarColor);
+  const randomIndex = Math.floor(
+    [...email].map((letter) => letter.codePointAt(0) ?? 0).reduce((a, b) => a + b, 0) % values.length,
+  );
+  return values[randomIndex];
+};
+
+export const mapUser = (entity: User | UserAdmin): UserResponseDto => {
   return {
     id: entity.id,
     email: entity.email,
     name: entity.name,
     profileImagePath: entity.profileImagePath,
-    avatarColor: getPreferences(entity).avatar.color,
+    avatarColor: entity.avatarColor ?? emailToAvatarColor(entity.email),
     profileChangedAt: entity.profileChangedAt,
   };
 };
@@ -55,6 +65,9 @@ export const mapUser = (entity: UserEntity): UserResponseDto => {
 export class UserAdminSearchDto {
   @ValidateBoolean({ optional: true })
   withDeleted?: boolean;
+
+  @ValidateUUID({ optional: true })
+  id?: string;
 }
 
 export class UserAdminCreateDto {
@@ -69,6 +82,9 @@ export class UserAdminCreateDto {
   @IsString()
   name!: string;
 
+  @ValidateEnum({ enum: UserAvatarColor, name: 'UserAvatarColor', optional: true, nullable: true })
+  avatarColor?: UserAvatarColor | null;
+
   @Optional({ nullable: true })
   @IsString()
   @Transform(toSanitized)
@@ -76,16 +92,18 @@ export class UserAdminCreateDto {
 
   @Optional({ nullable: true })
   @IsNumber()
-  @IsPositive()
+  @Min(0)
   @ApiProperty({ type: 'integer', format: 'int64' })
   quotaSizeInBytes?: number | null;
 
   @ValidateBoolean({ optional: true })
   shouldChangePassword?: boolean;
 
-  @Optional()
-  @IsBoolean()
+  @ValidateBoolean({ optional: true })
   notify?: boolean;
+
+  @ValidateBoolean({ optional: true })
+  isAdmin?: boolean;
 }
 
 export class UserAdminUpdateDto {
@@ -99,10 +117,16 @@ export class UserAdminUpdateDto {
   @IsString()
   password?: string;
 
+  @PinCode({ optional: true, nullable: true, emptyToNull: true })
+  pinCode?: string | null;
+
   @Optional()
   @IsString()
   @IsNotEmpty()
   name?: string;
+
+  @ValidateEnum({ enum: UserAvatarColor, name: 'UserAvatarColor', optional: true, nullable: true })
+  avatarColor?: UserAvatarColor | null;
 
   @Optional({ nullable: true })
   @IsString()
@@ -114,9 +138,12 @@ export class UserAdminUpdateDto {
 
   @Optional({ nullable: true })
   @IsNumber()
-  @IsPositive()
+  @Min(0)
   @ApiProperty({ type: 'integer', format: 'int64' })
   quotaSizeInBytes?: number | null;
+
+  @ValidateBoolean({ optional: true })
+  isAdmin?: boolean;
 }
 
 export class UserAdminDeleteDto {
@@ -136,14 +163,15 @@ export class UserAdminResponseDto extends UserResponseDto {
   quotaSizeInBytes!: number | null;
   @ApiProperty({ type: 'integer', format: 'int64' })
   quotaUsageInBytes!: number | null;
-  @ApiProperty({ enumName: 'UserStatus', enum: UserStatus })
+  @ValidateEnum({ enum: UserStatus, name: 'UserStatus' })
   status!: string;
   license!: UserLicense | null;
 }
 
-export function mapUserAdmin(entity: UserEntity): UserAdminResponseDto {
-  const license = entity.metadata?.find(
-    (item): item is UserMetadataEntity<UserMetadataKey.LICENSE> => item.key === UserMetadataKey.LICENSE,
+export function mapUserAdmin(entity: UserAdmin): UserAdminResponseDto {
+  const metadata = entity.metadata || [];
+  const license = metadata.find(
+    (item): item is UserMetadataItem<UserMetadataKey.License> => item.key === UserMetadataKey.License,
   )?.value;
   return {
     ...mapUser(entity),
@@ -157,6 +185,6 @@ export function mapUserAdmin(entity: UserEntity): UserAdminResponseDto {
     quotaSizeInBytes: entity.quotaSizeInBytes,
     quotaUsageInBytes: entity.quotaUsageInBytes,
     status: entity.status,
-    license: license ?? null,
+    license: license ? { ...license, activatedAt: new Date(license?.activatedAt) } : null,
   };
 }

@@ -4,7 +4,7 @@ import 'package:immich_mobile/entities/asset.entity.dart';
 class AssetSelectionPageResult {
   final Set<Asset> selectedAssets;
 
-  AssetSelectionPageResult({
+  const AssetSelectionPageResult({
     required this.selectedAssets,
   });
   @override
@@ -12,8 +12,7 @@ class AssetSelectionPageResult {
     if (identical(this, other)) return true;
     final setEquals = const DeepCollectionEquality().equals;
 
-    return other is AssetSelectionPageResult &&
-        setEquals(other.selectedAssets, selectedAssets);
+    return other is AssetSelectionPageResult && setEquals(other.selectedAssets, selectedAssets);
   }
 
   @override

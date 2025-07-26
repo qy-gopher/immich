@@ -32,6 +32,7 @@
   <a href="README_de_DE.md">Deutsch</a>
   <a href="README_nl_NL.md">Nederlands</a>
   <a href="README_tr_TR.md">Türkçe</a>
+  <a href="README_uk_UA.md">Українська</a>
   <a href="README_ru_RU.md">Русский</a>
   <a href="README_pt_BR.md">Português Brasileiro</a>
   <a href="README_sv_SE.md">Svenska</a>
@@ -64,9 +65,7 @@
 
 ## 示例
 
-您可以在[此处](https://demo.immich.app)访问在线演示网站。该示例网站运行的机器配置为：甲骨文免费虚拟机套餐——阿姆斯特丹 4核 2.4Ghz ARM64 CPU，24GB RAM。
-
-在移动端，您可以使用 `https://demo.immich.app/api` 作为 `服务终端链接`
+您可以在[此处](https://demo.immich.app)访问在线演示网站。在移动端，您可以使用 `https://demo.immich.app` 作为 `服务终端链接`
 
 ### 登录认证信息
 

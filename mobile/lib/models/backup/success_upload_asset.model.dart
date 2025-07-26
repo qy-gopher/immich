@@ -5,7 +5,7 @@ class SuccessUploadAsset {
   final String remoteAssetId;
   final bool isDuplicate;
 
-  SuccessUploadAsset({
+  const SuccessUploadAsset({
     required this.candidate,
     required this.remoteAssetId,
     required this.isDuplicate,
@@ -31,12 +31,9 @@ class SuccessUploadAsset {
   bool operator ==(covariant SuccessUploadAsset other) {
     if (identical(this, other)) return true;
 
-    return other.candidate == candidate &&
-        other.remoteAssetId == remoteAssetId &&
-        other.isDuplicate == isDuplicate;
+    return other.candidate == candidate && other.remoteAssetId == remoteAssetId && other.isDuplicate == isDuplicate;
   }
 
   @override
-  int get hashCode =>
-      candidate.hashCode ^ remoteAssetId.hashCode ^ isDuplicate.hashCode;
+  int get hashCode => candidate.hashCode ^ remoteAssetId.hashCode ^ isDuplicate.hashCode;
 }

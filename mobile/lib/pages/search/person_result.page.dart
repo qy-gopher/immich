@@ -28,6 +28,7 @@ class PersonResultPage extends HookConsumerWidget {
     showEditNameDialog() {
       showDialog(
         context: context,
+        useRootNavigator: false,
         builder: (BuildContext context) {
           return PersonNameEditForm(
             personId: personId,
@@ -55,7 +56,7 @@ class PersonResultPage extends HookConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.edit_outlined),
                   title: const Text(
-                    'search_page_person_edit_name',
+                    'edit_name',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ).tr(),
                   onTap: showEditNameDialog,
@@ -75,13 +76,13 @@ class PersonResultPage extends HookConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'search_page_person_add_name_title',
+                    'add_a_name',
                     style: context.textTheme.titleMedium?.copyWith(
                       color: context.primaryColor,
                     ),
                   ).tr(),
                   Text(
-                    'search_page_person_add_name_subtitle',
+                    'find_them_fast',
                     style: context.textTheme.labelLarge,
                   ).tr(),
                 ],

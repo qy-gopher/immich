@@ -1,36 +1,20 @@
 import { SystemConfig } from 'src/config';
-import { ImmichWorker } from 'src/enum';
-import { IAssetRepository, WithoutProperty } from 'src/interfaces/asset.interface';
-import { IConfigRepository } from 'src/interfaces/config.interface';
-import { IDatabaseRepository } from 'src/interfaces/database.interface';
-import { IJobRepository, JobName, JobStatus } from 'src/interfaces/job.interface';
-import { IMachineLearningRepository } from 'src/interfaces/machine-learning.interface';
-import { ISearchRepository } from 'src/interfaces/search.interface';
-import { ISystemMetadataRepository } from 'src/interfaces/system-metadata.interface';
+import { ImmichWorker, JobName, JobStatus } from 'src/enum';
 import { SmartInfoService } from 'src/services/smart-info.service';
 import { getCLIPModelInfo } from 'src/utils/misc';
 import { assetStub } from 'test/fixtures/asset.stub';
 import { systemConfigStub } from 'test/fixtures/system-config.stub';
-import { newTestService } from 'test/utils';
-import { Mocked } from 'vitest';
+import { makeStream, newTestService, ServiceMocks } from 'test/utils';
 
 describe(SmartInfoService.name, () => {
   let sut: SmartInfoService;
-
-  let assetMock: Mocked<IAssetRepository>;
-  let databaseMock: Mocked<IDatabaseRepository>;
-  let jobMock: Mocked<IJobRepository>;
-  let machineLearningMock: Mocked<IMachineLearningRepository>;
-  let searchMock: Mocked<ISearchRepository>;
-  let systemMock: Mocked<ISystemMetadataRepository>;
-  let configMock: Mocked<IConfigRepository>;
+  let mocks: ServiceMocks;
 
   beforeEach(() => {
-    ({ sut, assetMock, databaseMock, jobMock, machineLearningMock, searchMock, systemMock, configMock } =
-      newTestService(SmartInfoService));
+    ({ sut, mocks } = newTestService(SmartInfoService));
 
-    assetMock.getByIds.mockResolvedValue([assetStub.image]);
-    configMock.getWorker.mockReturnValue(ImmichWorker.MICROSERVICES);
+    mocks.asset.getByIds.mockResolvedValue([assetStub.image]);
+    mocks.config.getWorker.mockReturnValue(ImmichWorker.Microservices);
   });
 
   it('should work', () => {
@@ -70,79 +54,48 @@ describe(SmartInfoService.name, () => {
     it('should return if machine learning is disabled', async () => {
       await sut.onConfigInit({ newConfig: systemConfigStub.machineLearningDisabled as SystemConfig });
 
-      expect(searchMock.getDimensionSize).not.toHaveBeenCalled();
-      expect(searchMock.setDimensionSize).not.toHaveBeenCalled();
-      expect(searchMock.deleteAllSearchEmbeddings).not.toHaveBeenCalled();
-      expect(jobMock.getQueueStatus).not.toHaveBeenCalled();
-      expect(jobMock.pause).not.toHaveBeenCalled();
-      expect(jobMock.waitForQueueCompletion).not.toHaveBeenCalled();
-      expect(jobMock.resume).not.toHaveBeenCalled();
+      expect(mocks.database.getDimensionSize).not.toHaveBeenCalled();
+      expect(mocks.database.setDimensionSize).not.toHaveBeenCalled();
+      expect(mocks.database.deleteAllSearchEmbeddings).not.toHaveBeenCalled();
     });
 
     it('should return if model and DB dimension size are equal', async () => {
-      searchMock.getDimensionSize.mockResolvedValue(512);
+      mocks.database.getDimensionSize.mockResolvedValue(512);
 
       await sut.onConfigInit({ newConfig: systemConfigStub.machineLearningEnabled as SystemConfig });
 
-      expect(searchMock.getDimensionSize).toHaveBeenCalledTimes(1);
-      expect(searchMock.setDimensionSize).not.toHaveBeenCalled();
-      expect(searchMock.deleteAllSearchEmbeddings).not.toHaveBeenCalled();
-      expect(jobMock.getQueueStatus).not.toHaveBeenCalled();
-      expect(jobMock.pause).not.toHaveBeenCalled();
-      expect(jobMock.waitForQueueCompletion).not.toHaveBeenCalled();
-      expect(jobMock.resume).not.toHaveBeenCalled();
+      expect(mocks.database.getDimensionSize).toHaveBeenCalledTimes(1);
+      expect(mocks.database.setDimensionSize).not.toHaveBeenCalled();
+      expect(mocks.database.deleteAllSearchEmbeddings).not.toHaveBeenCalled();
     });
 
     it('should update DB dimension size if model and DB have different values', async () => {
-      searchMock.getDimensionSize.mockResolvedValue(768);
-      jobMock.getQueueStatus.mockResolvedValue({ isActive: false, isPaused: false });
+      mocks.database.getDimensionSize.mockResolvedValue(768);
 
       await sut.onConfigInit({ newConfig: systemConfigStub.machineLearningEnabled as SystemConfig });
 
-      expect(searchMock.getDimensionSize).toHaveBeenCalledTimes(1);
-      expect(searchMock.setDimensionSize).toHaveBeenCalledWith(512);
-      expect(jobMock.getQueueStatus).toHaveBeenCalledTimes(1);
-      expect(jobMock.pause).toHaveBeenCalledTimes(1);
-      expect(jobMock.waitForQueueCompletion).toHaveBeenCalledTimes(1);
-      expect(jobMock.resume).toHaveBeenCalledTimes(1);
-    });
-
-    it('should skip pausing and resuming queue if already paused', async () => {
-      searchMock.getDimensionSize.mockResolvedValue(768);
-      jobMock.getQueueStatus.mockResolvedValue({ isActive: false, isPaused: true });
-
-      await sut.onConfigInit({ newConfig: systemConfigStub.machineLearningEnabled as SystemConfig });
-
-      expect(searchMock.getDimensionSize).toHaveBeenCalledTimes(1);
-      expect(searchMock.setDimensionSize).toHaveBeenCalledWith(512);
-      expect(jobMock.getQueueStatus).toHaveBeenCalledTimes(1);
-      expect(jobMock.pause).not.toHaveBeenCalled();
-      expect(jobMock.waitForQueueCompletion).toHaveBeenCalledTimes(1);
-      expect(jobMock.resume).not.toHaveBeenCalled();
+      expect(mocks.database.getDimensionSize).toHaveBeenCalledTimes(1);
+      expect(mocks.database.setDimensionSize).toHaveBeenCalledWith(512);
     });
   });
 
   describe('onConfigUpdateEvent', () => {
     it('should return if machine learning is disabled', async () => {
-      systemMock.get.mockResolvedValue(systemConfigStub.machineLearningDisabled);
+      mocks.systemMetadata.get.mockResolvedValue(systemConfigStub.machineLearningDisabled);
 
       await sut.onConfigUpdate({
         newConfig: systemConfigStub.machineLearningDisabled as SystemConfig,
         oldConfig: systemConfigStub.machineLearningDisabled as SystemConfig,
       });
 
-      expect(systemMock.get).not.toHaveBeenCalled();
-      expect(searchMock.getDimensionSize).not.toHaveBeenCalled();
-      expect(searchMock.setDimensionSize).not.toHaveBeenCalled();
-      expect(searchMock.deleteAllSearchEmbeddings).not.toHaveBeenCalled();
-      expect(jobMock.getQueueStatus).not.toHaveBeenCalled();
-      expect(jobMock.pause).not.toHaveBeenCalled();
-      expect(jobMock.waitForQueueCompletion).not.toHaveBeenCalled();
-      expect(jobMock.resume).not.toHaveBeenCalled();
+      expect(mocks.systemMetadata.get).not.toHaveBeenCalled();
+      expect(mocks.database.getDimensionSize).not.toHaveBeenCalled();
+      expect(mocks.database.setDimensionSize).not.toHaveBeenCalled();
+      expect(mocks.database.deleteAllSearchEmbeddings).not.toHaveBeenCalled();
     });
 
     it('should return if model and DB dimension size are equal', async () => {
-      searchMock.getDimensionSize.mockResolvedValue(512);
+      mocks.database.getDimensionSize.mockResolvedValue(512);
 
       await sut.onConfigUpdate({
         newConfig: {
@@ -153,18 +106,13 @@ describe(SmartInfoService.name, () => {
         } as SystemConfig,
       });
 
-      expect(searchMock.getDimensionSize).toHaveBeenCalledTimes(1);
-      expect(searchMock.setDimensionSize).not.toHaveBeenCalled();
-      expect(searchMock.deleteAllSearchEmbeddings).not.toHaveBeenCalled();
-      expect(jobMock.getQueueStatus).not.toHaveBeenCalled();
-      expect(jobMock.pause).not.toHaveBeenCalled();
-      expect(jobMock.waitForQueueCompletion).not.toHaveBeenCalled();
-      expect(jobMock.resume).not.toHaveBeenCalled();
+      expect(mocks.database.getDimensionSize).toHaveBeenCalledTimes(1);
+      expect(mocks.database.setDimensionSize).not.toHaveBeenCalled();
+      expect(mocks.database.deleteAllSearchEmbeddings).not.toHaveBeenCalled();
     });
 
     it('should update DB dimension size if model and DB have different values', async () => {
-      searchMock.getDimensionSize.mockResolvedValue(512);
-      jobMock.getQueueStatus.mockResolvedValue({ isActive: false, isPaused: false });
+      mocks.database.getDimensionSize.mockResolvedValue(512);
 
       await sut.onConfigUpdate({
         newConfig: {
@@ -175,17 +123,12 @@ describe(SmartInfoService.name, () => {
         } as SystemConfig,
       });
 
-      expect(searchMock.getDimensionSize).toHaveBeenCalledTimes(1);
-      expect(searchMock.setDimensionSize).toHaveBeenCalledWith(768);
-      expect(jobMock.getQueueStatus).toHaveBeenCalledTimes(1);
-      expect(jobMock.pause).toHaveBeenCalledTimes(1);
-      expect(jobMock.waitForQueueCompletion).toHaveBeenCalledTimes(1);
-      expect(jobMock.resume).toHaveBeenCalledTimes(1);
+      expect(mocks.database.getDimensionSize).toHaveBeenCalledTimes(1);
+      expect(mocks.database.setDimensionSize).toHaveBeenCalledWith(768);
     });
 
     it('should clear embeddings if old and new models are different', async () => {
-      searchMock.getDimensionSize.mockResolvedValue(512);
-      jobMock.getQueueStatus.mockResolvedValue({ isActive: false, isPaused: false });
+      mocks.database.getDimensionSize.mockResolvedValue(512);
 
       await sut.onConfigUpdate({
         newConfig: {
@@ -196,137 +139,114 @@ describe(SmartInfoService.name, () => {
         } as SystemConfig,
       });
 
-      expect(searchMock.deleteAllSearchEmbeddings).toHaveBeenCalled();
-      expect(searchMock.getDimensionSize).toHaveBeenCalledTimes(1);
-      expect(searchMock.setDimensionSize).not.toHaveBeenCalled();
-      expect(jobMock.getQueueStatus).toHaveBeenCalledTimes(1);
-      expect(jobMock.pause).toHaveBeenCalledTimes(1);
-      expect(jobMock.waitForQueueCompletion).toHaveBeenCalledTimes(1);
-      expect(jobMock.resume).toHaveBeenCalledTimes(1);
-    });
-
-    it('should skip pausing and resuming queue if already paused', async () => {
-      searchMock.getDimensionSize.mockResolvedValue(512);
-      jobMock.getQueueStatus.mockResolvedValue({ isActive: false, isPaused: true });
-
-      await sut.onConfigUpdate({
-        newConfig: {
-          machineLearning: { clip: { modelName: 'ViT-B-32__openai', enabled: true }, enabled: true },
-        } as SystemConfig,
-        oldConfig: {
-          machineLearning: { clip: { modelName: 'ViT-B-16__openai', enabled: true }, enabled: true },
-        } as SystemConfig,
-      });
-
-      expect(searchMock.getDimensionSize).toHaveBeenCalledTimes(1);
-      expect(searchMock.setDimensionSize).not.toHaveBeenCalled();
-      expect(jobMock.getQueueStatus).toHaveBeenCalledTimes(1);
-      expect(jobMock.pause).not.toHaveBeenCalled();
-      expect(jobMock.waitForQueueCompletion).toHaveBeenCalledTimes(1);
-      expect(jobMock.resume).not.toHaveBeenCalled();
+      expect(mocks.database.deleteAllSearchEmbeddings).toHaveBeenCalled();
+      expect(mocks.database.getDimensionSize).toHaveBeenCalledTimes(1);
+      expect(mocks.database.setDimensionSize).not.toHaveBeenCalled();
     });
   });
 
   describe('handleQueueEncodeClip', () => {
     it('should do nothing if machine learning is disabled', async () => {
-      systemMock.get.mockResolvedValue(systemConfigStub.machineLearningDisabled);
+      mocks.systemMetadata.get.mockResolvedValue(systemConfigStub.machineLearningDisabled);
 
       await sut.handleQueueEncodeClip({});
 
-      expect(assetMock.getAll).not.toHaveBeenCalled();
-      expect(assetMock.getWithout).not.toHaveBeenCalled();
+      expect(mocks.database.setDimensionSize).not.toHaveBeenCalled();
     });
 
     it('should queue the assets without clip embeddings', async () => {
-      assetMock.getWithout.mockResolvedValue({
-        items: [assetStub.image],
-        hasNextPage: false,
-      });
+      mocks.assetJob.streamForEncodeClip.mockReturnValue(makeStream([assetStub.image]));
 
       await sut.handleQueueEncodeClip({ force: false });
 
-      expect(jobMock.queueAll).toHaveBeenCalledWith([{ name: JobName.SMART_SEARCH, data: { id: assetStub.image.id } }]);
-      expect(assetMock.getWithout).toHaveBeenCalledWith({ skip: 0, take: 1000 }, WithoutProperty.SMART_SEARCH);
-      expect(searchMock.deleteAllSearchEmbeddings).not.toHaveBeenCalled();
+      expect(mocks.job.queueAll).toHaveBeenCalledWith([
+        { name: JobName.SmartSearch, data: { id: assetStub.image.id } },
+      ]);
+      expect(mocks.assetJob.streamForEncodeClip).toHaveBeenCalledWith(false);
+      expect(mocks.database.setDimensionSize).not.toHaveBeenCalled();
     });
 
     it('should queue all the assets', async () => {
-      assetMock.getAll.mockResolvedValue({
-        items: [assetStub.image],
-        hasNextPage: false,
-      });
+      mocks.assetJob.streamForEncodeClip.mockReturnValue(makeStream([assetStub.image]));
 
       await sut.handleQueueEncodeClip({ force: true });
 
-      expect(jobMock.queueAll).toHaveBeenCalledWith([{ name: JobName.SMART_SEARCH, data: { id: assetStub.image.id } }]);
-      expect(assetMock.getAll).toHaveBeenCalled();
-      expect(searchMock.deleteAllSearchEmbeddings).toHaveBeenCalled();
+      expect(mocks.job.queueAll).toHaveBeenCalledWith([
+        { name: JobName.SmartSearch, data: { id: assetStub.image.id } },
+      ]);
+      expect(mocks.assetJob.streamForEncodeClip).toHaveBeenCalledWith(true);
+      expect(mocks.database.setDimensionSize).toHaveBeenCalledExactlyOnceWith(512);
     });
   });
 
   describe('handleEncodeClip', () => {
     it('should do nothing if machine learning is disabled', async () => {
-      systemMock.get.mockResolvedValue(systemConfigStub.machineLearningDisabled);
+      mocks.systemMetadata.get.mockResolvedValue(systemConfigStub.machineLearningDisabled);
 
-      expect(await sut.handleEncodeClip({ id: '123' })).toEqual(JobStatus.SKIPPED);
+      expect(await sut.handleEncodeClip({ id: '123' })).toEqual(JobStatus.Skipped);
 
-      expect(assetMock.getByIds).not.toHaveBeenCalled();
-      expect(machineLearningMock.encodeImage).not.toHaveBeenCalled();
+      expect(mocks.asset.getByIds).not.toHaveBeenCalled();
+      expect(mocks.machineLearning.encodeImage).not.toHaveBeenCalled();
     });
 
     it('should skip assets without a resize path', async () => {
-      assetMock.getByIds.mockResolvedValue([assetStub.noResizePath]);
+      mocks.assetJob.getForClipEncoding.mockResolvedValue({ ...assetStub.noResizePath, files: [] });
 
-      expect(await sut.handleEncodeClip({ id: assetStub.noResizePath.id })).toEqual(JobStatus.FAILED);
+      expect(await sut.handleEncodeClip({ id: assetStub.noResizePath.id })).toEqual(JobStatus.Failed);
 
-      expect(searchMock.upsert).not.toHaveBeenCalled();
-      expect(machineLearningMock.encodeImage).not.toHaveBeenCalled();
+      expect(mocks.search.upsert).not.toHaveBeenCalled();
+      expect(mocks.machineLearning.encodeImage).not.toHaveBeenCalled();
     });
 
     it('should save the returned objects', async () => {
-      machineLearningMock.encodeImage.mockResolvedValue([0.01, 0.02, 0.03]);
+      mocks.machineLearning.encodeImage.mockResolvedValue('[0.01, 0.02, 0.03]');
+      mocks.assetJob.getForClipEncoding.mockResolvedValue({ ...assetStub.image, files: [assetStub.image.files[1]] });
 
-      expect(await sut.handleEncodeClip({ id: assetStub.image.id })).toEqual(JobStatus.SUCCESS);
+      expect(await sut.handleEncodeClip({ id: assetStub.image.id })).toEqual(JobStatus.Success);
 
-      expect(machineLearningMock.encodeImage).toHaveBeenCalledWith(
+      expect(mocks.machineLearning.encodeImage).toHaveBeenCalledWith(
         ['http://immich-machine-learning:3003'],
         '/uploads/user-id/thumbs/path.jpg',
         expect.objectContaining({ modelName: 'ViT-B-32__openai' }),
       );
-      expect(searchMock.upsert).toHaveBeenCalledWith(assetStub.image.id, [0.01, 0.02, 0.03]);
+      expect(mocks.search.upsert).toHaveBeenCalledWith(assetStub.image.id, '[0.01, 0.02, 0.03]');
     });
 
     it('should skip invisible assets', async () => {
-      assetMock.getByIds.mockResolvedValue([assetStub.livePhotoMotionAsset]);
+      mocks.assetJob.getForClipEncoding.mockResolvedValue({
+        ...assetStub.livePhotoMotionAsset,
+        files: [assetStub.image.files[1]],
+      });
 
-      expect(await sut.handleEncodeClip({ id: assetStub.livePhotoMotionAsset.id })).toEqual(JobStatus.SKIPPED);
+      expect(await sut.handleEncodeClip({ id: assetStub.livePhotoMotionAsset.id })).toEqual(JobStatus.Skipped);
 
-      expect(machineLearningMock.encodeImage).not.toHaveBeenCalled();
-      expect(searchMock.upsert).not.toHaveBeenCalled();
+      expect(mocks.machineLearning.encodeImage).not.toHaveBeenCalled();
+      expect(mocks.search.upsert).not.toHaveBeenCalled();
     });
 
     it('should fail if asset could not be found', async () => {
-      assetMock.getByIds.mockResolvedValue([]);
+      mocks.assetJob.getForClipEncoding.mockResolvedValue(void 0);
 
-      expect(await sut.handleEncodeClip({ id: assetStub.image.id })).toEqual(JobStatus.FAILED);
+      expect(await sut.handleEncodeClip({ id: assetStub.image.id })).toEqual(JobStatus.Failed);
 
-      expect(machineLearningMock.encodeImage).not.toHaveBeenCalled();
-      expect(searchMock.upsert).not.toHaveBeenCalled();
+      expect(mocks.machineLearning.encodeImage).not.toHaveBeenCalled();
+      expect(mocks.search.upsert).not.toHaveBeenCalled();
     });
 
     it('should wait for database', async () => {
-      machineLearningMock.encodeImage.mockResolvedValue([0.01, 0.02, 0.03]);
-      databaseMock.isBusy.mockReturnValue(true);
+      mocks.machineLearning.encodeImage.mockResolvedValue('[0.01, 0.02, 0.03]');
+      mocks.database.isBusy.mockReturnValue(true);
+      mocks.assetJob.getForClipEncoding.mockResolvedValue({ ...assetStub.image, files: [assetStub.image.files[1]] });
 
-      expect(await sut.handleEncodeClip({ id: assetStub.image.id })).toEqual(JobStatus.SUCCESS);
+      expect(await sut.handleEncodeClip({ id: assetStub.image.id })).toEqual(JobStatus.Success);
 
-      expect(databaseMock.wait).toHaveBeenCalledWith(512);
-      expect(machineLearningMock.encodeImage).toHaveBeenCalledWith(
+      expect(mocks.database.wait).toHaveBeenCalledWith(512);
+      expect(mocks.machineLearning.encodeImage).toHaveBeenCalledWith(
         ['http://immich-machine-learning:3003'],
         '/uploads/user-id/thumbs/path.jpg',
         expect.objectContaining({ modelName: 'ViT-B-32__openai' }),
       );
-      expect(searchMock.upsert).toHaveBeenCalledWith(assetStub.image.id, [0.01, 0.02, 0.03]);
+      expect(mocks.search.upsert).toHaveBeenCalledWith(assetStub.image.id, '[0.01, 0.02, 0.03]');
     });
   });
 

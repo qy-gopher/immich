@@ -4,34 +4,34 @@ import { APIKeyCreateDto, APIKeyCreateResponseDto, APIKeyResponseDto, APIKeyUpda
 import { AuthDto } from 'src/dtos/auth.dto';
 import { Permission } from 'src/enum';
 import { Auth, Authenticated } from 'src/middleware/auth.guard';
-import { APIKeyService } from 'src/services/api-key.service';
+import { ApiKeyService } from 'src/services/api-key.service';
 import { UUIDParamDto } from 'src/validation';
 
 @ApiTags('API Keys')
 @Controller('api-keys')
 export class APIKeyController {
-  constructor(private service: APIKeyService) {}
+  constructor(private service: ApiKeyService) {}
 
   @Post()
-  @Authenticated({ permission: Permission.API_KEY_CREATE })
+  @Authenticated({ permission: Permission.ApiKeyCreate })
   createApiKey(@Auth() auth: AuthDto, @Body() dto: APIKeyCreateDto): Promise<APIKeyCreateResponseDto> {
     return this.service.create(auth, dto);
   }
 
   @Get()
-  @Authenticated({ permission: Permission.API_KEY_READ })
+  @Authenticated({ permission: Permission.ApiKeyRead })
   getApiKeys(@Auth() auth: AuthDto): Promise<APIKeyResponseDto[]> {
     return this.service.getAll(auth);
   }
 
   @Get(':id')
-  @Authenticated({ permission: Permission.API_KEY_READ })
+  @Authenticated({ permission: Permission.ApiKeyRead })
   getApiKey(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto): Promise<APIKeyResponseDto> {
     return this.service.getById(auth, id);
   }
 
   @Put(':id')
-  @Authenticated({ permission: Permission.API_KEY_UPDATE })
+  @Authenticated({ permission: Permission.ApiKeyUpdate })
   updateApiKey(
     @Auth() auth: AuthDto,
     @Param() { id }: UUIDParamDto,
@@ -42,7 +42,7 @@ export class APIKeyController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Authenticated({ permission: Permission.API_KEY_DELETE })
+  @Authenticated({ permission: Permission.ApiKeyDelete })
   deleteApiKey(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto): Promise<void> {
     return this.service.delete(auth, id);
   }

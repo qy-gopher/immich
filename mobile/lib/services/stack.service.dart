@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/entities/asset.entity.dart';
-import 'package:immich_mobile/interfaces/asset.interface.dart';
 import 'package:immich_mobile/providers/api.provider.dart';
 import 'package:immich_mobile/repositories/asset.repository.dart';
 import 'package:immich_mobile/services/api.service.dart';
 import 'package:openapi/api.dart';
 
 class StackService {
-  StackService(this._api, this._assetRepository);
+  const StackService(this._api, this._assetRepository);
 
   final ApiService _api;
-  final IAssetRepository _assetRepository;
+  final AssetRepository _assetRepository;
 
   Future<StackResponseDto?> getStack(String stackId) async {
     try {
@@ -61,8 +60,7 @@ class StackService {
 
         removeAssets.add(asset);
       }
-      await _assetRepository
-          .transaction(() => _assetRepository.updateAll(removeAssets));
+      await _assetRepository.transaction(() => _assetRepository.updateAll(removeAssets));
     } catch (error) {
       debugPrint("Error while deleting stack: $error");
     }

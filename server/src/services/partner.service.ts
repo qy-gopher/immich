@@ -1,10 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Partner } from 'src/database';
 import { AuthDto } from 'src/dtos/auth.dto';
 import { PartnerResponseDto, PartnerSearchDto, UpdatePartnerDto } from 'src/dtos/partner.dto';
 import { mapUser } from 'src/dtos/user.dto';
-import { PartnerEntity } from 'src/entities/partner.entity';
 import { Permission } from 'src/enum';
-import { PartnerDirection, PartnerIds } from 'src/interfaces/partner.interface';
+import { PartnerDirection, PartnerIds } from 'src/repositories/partner.repository';
 import { BaseService } from 'src/services/base.service';
 
 @Injectable()
@@ -27,34 +27,32 @@ export class PartnerService extends BaseService {
       throw new BadRequestException('Partner not found');
     }
 
-    await this.partnerRepository.remove(partner);
+    await this.partnerRepository.remove(partnerId);
   }
 
   async search(auth: AuthDto, { direction }: PartnerSearchDto): Promise<PartnerResponseDto[]> {
     const partners = await this.partnerRepository.getAll(auth.user.id);
     const key = direction === PartnerDirection.SharedBy ? 'sharedById' : 'sharedWithId';
     return partners
-      .filter((partner) => partner.sharedBy && partner.sharedWith) // Filter out soft deleted users
+      .filter((partner): partner is Partner => !!(partner.sharedBy && partner.sharedWith)) // Filter out soft deleted users
       .filter((partner) => partner[key] === auth.user.id)
       .map((partner) => this.mapPartner(partner, direction));
   }
 
   async update(auth: AuthDto, sharedById: string, dto: UpdatePartnerDto): Promise<PartnerResponseDto> {
-    await this.requireAccess({ auth, permission: Permission.PARTNER_UPDATE, ids: [sharedById] });
+    await this.requireAccess({ auth, permission: Permission.PartnerUpdate, ids: [sharedById] });
     const partnerId: PartnerIds = { sharedById, sharedWithId: auth.user.id };
 
-    const entity = await this.partnerRepository.update({ ...partnerId, inTimeline: dto.inTimeline });
+    const entity = await this.partnerRepository.update(partnerId, { inTimeline: dto.inTimeline });
     return this.mapPartner(entity, PartnerDirection.SharedWith);
   }
 
-  private mapPartner(partner: PartnerEntity, direction: PartnerDirection): PartnerResponseDto {
+  private mapPartner(partner: Partner, direction: PartnerDirection): PartnerResponseDto {
     // this is opposite to return the non-me user of the "partner"
     const user = mapUser(
       direction === PartnerDirection.SharedBy ? partner.sharedWith : partner.sharedBy,
     ) as PartnerResponseDto;
 
-    user.inTimeline = partner.inTimeline;
-
-    return user;
+    return { ...user, inTimeline: partner.inTimeline };
   }
 }

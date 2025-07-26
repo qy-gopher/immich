@@ -15,10 +15,9 @@
   interface Props {
     link: SharedLinkResponseDto;
     onDelete: () => void;
-    onEdit: () => void;
   }
 
-  let { link, onDelete, onEdit }: Props = $props();
+  let { link, onDelete }: Props = $props();
 
   let now = DateTime.now();
   let expiresAt = $derived(link.expiresAt ? DateTime.fromISO(link.expiresAt) : undefined);
@@ -95,24 +94,22 @@
       </div>
     </div>
   </svelte:element>
-
   <div class="flex flex-auto flex-col place-content-center place-items-end text-end ms-4">
     <div class="sm:flex hidden">
-      <SharedLinkEdit {onEdit} />
+      <SharedLinkEdit sharedLink={link} />
       <SharedLinkCopy {link} />
       <SharedLinkDelete {onDelete} />
     </div>
 
     <div class="sm:hidden">
       <ButtonContextMenu
-        color="transparent"
+        color="primary"
         title={$t('shared_link_options')}
         icon={mdiDotsVertical}
-        size="24"
-        padding="3"
+        size="large"
         hideContent
       >
-        <SharedLinkEdit menuItem {onEdit} />
+        <SharedLinkEdit menuItem sharedLink={link} />
         <SharedLinkCopy menuItem {link} />
         <SharedLinkDelete menuItem {onDelete} />
       </ButtonContextMenu>

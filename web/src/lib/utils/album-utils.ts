@@ -1,5 +1,4 @@
 import { goto } from '$app/navigation';
-import { dialogController } from '$lib/components/shared-components/dialog/dialog';
 import { AppRoute } from '$lib/constants';
 import {
   AlbumFilter,
@@ -13,6 +12,7 @@ import {
 import { handleError } from '$lib/utils/handle-error';
 import type { AlbumResponseDto } from '@immich/sdk';
 import * as sdk from '@immich/sdk';
+import { modalManager } from '@immich/ui';
 import { orderBy } from 'lodash-es';
 import { t } from 'svelte-i18n';
 import { get } from 'svelte/store';
@@ -59,7 +59,7 @@ export const sortOptionsMetadata: AlbumSortOptionMetadata[] = [
   {
     id: AlbumSortBy.Title,
     defaultOrder: SortOrder.Asc,
-    columnStyle: 'text-left w-8/12 sm:w-4/12 md:w-4/12 md:w-4/12 xl:w-[30%] 2xl:w-[40%]',
+    columnStyle: 'text-start w-8/12 sm:w-4/12 md:w-4/12 xl:w-[30%] 2xl:w-[40%]',
   },
   {
     id: AlbumSortBy.ItemCount,
@@ -213,7 +213,7 @@ export const confirmAlbumDelete = async (album: AlbumResponseDto) => {
   const description = $t('album_delete_confirmation_description');
   const prompt = `${confirmation} ${description}`;
 
-  return dialogController.show({ prompt });
+  return modalManager.showDialog({ prompt });
 };
 
 interface AlbumSortOption {

@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Put, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { EndpointLifecycle } from 'src/decorators';
-import { AssetResponseDto, MemoryLaneResponseDto } from 'src/dtos/asset-response.dto';
+import { AssetResponseDto } from 'src/dtos/asset-response.dto';
 import {
   AssetBulkDeleteDto,
   AssetBulkUpdateDto,
@@ -13,25 +13,18 @@ import {
   UpdateAssetDto,
 } from 'src/dtos/asset.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
-import { MemoryLaneDto } from 'src/dtos/search.dto';
-import { RouteKey } from 'src/enum';
+import { Permission, RouteKey } from 'src/enum';
 import { Auth, Authenticated } from 'src/middleware/auth.guard';
 import { AssetService } from 'src/services/asset.service';
 import { UUIDParamDto } from 'src/validation';
 
 @ApiTags('Assets')
-@Controller(RouteKey.ASSET)
+@Controller(RouteKey.Asset)
 export class AssetController {
   constructor(private service: AssetService) {}
 
-  @Get('memory-lane')
-  @Authenticated()
-  getMemoryLane(@Auth() auth: AuthDto, @Query() dto: MemoryLaneDto): Promise<MemoryLaneResponseDto[]> {
-    return this.service.getMemoryLane(auth, dto);
-  }
-
   @Get('random')
-  @Authenticated()
+  @Authenticated({ permission: Permission.AssetRead })
   @EndpointLifecycle({ deprecatedAt: 'v1.116.0' })
   getRandom(@Auth() auth: AuthDto, @Query() dto: RandomAssetsDto): Promise<AssetResponseDto[]> {
     return this.service.getRandom(auth, dto.count ?? 1);
@@ -41,13 +34,17 @@ export class AssetController {
    * Get all asset of a device that are in the database, ID only.
    */
   @Get('/device/:deviceId')
+  @ApiOperation({
+    summary: 'getAllUserAssetsByDeviceId',
+    description: 'Get all asset of a device that are in the database, ID only.',
+  })
   @Authenticated()
   getAllUserAssetsByDeviceId(@Auth() auth: AuthDto, @Param() { deviceId }: DeviceIdDto) {
     return this.service.getUserAssetsByDeviceId(auth, deviceId);
   }
 
   @Get('statistics')
-  @Authenticated()
+  @Authenticated({ permission: Permission.AssetStatistics })
   getAssetStatistics(@Auth() auth: AuthDto, @Query() dto: AssetStatsDto): Promise<AssetStatsResponseDto> {
     return this.service.getStatistics(auth, dto);
   }
@@ -61,26 +58,26 @@ export class AssetController {
 
   @Put()
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Authenticated()
+  @Authenticated({ permission: Permission.AssetUpdate })
   updateAssets(@Auth() auth: AuthDto, @Body() dto: AssetBulkUpdateDto): Promise<void> {
     return this.service.updateAll(auth, dto);
   }
 
   @Delete()
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Authenticated()
+  @Authenticated({ permission: Permission.AssetDelete })
   deleteAssets(@Auth() auth: AuthDto, @Body() dto: AssetBulkDeleteDto): Promise<void> {
     return this.service.deleteAll(auth, dto);
   }
 
   @Get(':id')
-  @Authenticated({ sharedLink: true })
+  @Authenticated({ permission: Permission.AssetRead, sharedLink: true })
   getAssetInfo(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto): Promise<AssetResponseDto> {
     return this.service.get(auth, id) as Promise<AssetResponseDto>;
   }
 
   @Put(':id')
-  @Authenticated()
+  @Authenticated({ permission: Permission.AssetUpdate })
   updateAsset(
     @Auth() auth: AuthDto,
     @Param() { id }: UUIDParamDto,

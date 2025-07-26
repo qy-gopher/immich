@@ -1,38 +1,74 @@
-import { Inject, Injectable, InternalServerErrorException } from '@nestjs/common';
-import { custom, generators, Issuer } from 'openid-client';
-import { ILoggerRepository } from 'src/interfaces/logger.interface';
-import { IOAuthRepository, OAuthConfig, OAuthProfile } from 'src/interfaces/oauth.interface';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import type { UserInfoResponse } from 'openid-client' with { 'resolution-mode': 'import' };
+import { OAuthTokenEndpointAuthMethod } from 'src/enum';
+import { LoggingRepository } from 'src/repositories/logging.repository';
+
+export type OAuthConfig = {
+  clientId: string;
+  clientSecret?: string;
+  issuerUrl: string;
+  mobileOverrideEnabled: boolean;
+  mobileRedirectUri: string;
+  profileSigningAlgorithm: string;
+  scope: string;
+  signingAlgorithm: string;
+  tokenEndpointAuthMethod: OAuthTokenEndpointAuthMethod;
+  timeout: number;
+};
+export type OAuthProfile = UserInfoResponse;
 
 @Injectable()
-export class OAuthRepository implements IOAuthRepository {
-  constructor(@Inject(ILoggerRepository) private logger: ILoggerRepository) {
+export class OAuthRepository {
+  constructor(private logger: LoggingRepository) {
     this.logger.setContext(OAuthRepository.name);
   }
 
-  init() {
-    custom.setHttpOptionsDefaults({ timeout: 30_000 });
-  }
-
-  async authorize(config: OAuthConfig, redirectUrl: string) {
+  async authorize(config: OAuthConfig, redirectUrl: string, state?: string, codeChallenge?: string) {
+    const { buildAuthorizationUrl, randomState, randomPKCECodeVerifier, calculatePKCECodeChallenge } = await import(
+      'openid-client'
+    );
     const client = await this.getClient(config);
-    return client.authorizationUrl({
+    state ??= randomState();
+    let codeVerifier: string | null;
+    if (codeChallenge) {
+      codeVerifier = null;
+    } else {
+      codeVerifier = randomPKCECodeVerifier();
+      codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
+    }
+    const url = buildAuthorizationUrl(client, {
       redirect_uri: redirectUrl,
       scope: config.scope,
-      state: generators.state(),
-    });
+      state,
+      code_challenge: client.serverMetadata().supportsPKCE() ? codeChallenge : '',
+      code_challenge_method: client.serverMetadata().supportsPKCE() ? 'S256' : '',
+    }).toString();
+    return { url, state, codeVerifier };
   }
 
   async getLogoutEndpoint(config: OAuthConfig) {
     const client = await this.getClient(config);
-    return client.issuer.metadata.end_session_endpoint;
+    return client.serverMetadata().end_session_endpoint;
   }
 
-  async getProfile(config: OAuthConfig, url: string, redirectUrl: string): Promise<OAuthProfile> {
+  async getProfile(
+    config: OAuthConfig,
+    url: string,
+    expectedState: string,
+    codeVerifier: string,
+  ): Promise<OAuthProfile> {
+    const { authorizationCodeGrant, fetchUserInfo, ...oidc } = await import('openid-client');
     const client = await this.getClient(config);
-    const params = client.callbackParams(url);
+    const pkceCodeVerifier = client.serverMetadata().supportsPKCE() ? codeVerifier : undefined;
+
     try {
-      const tokens = await client.callback(redirectUrl, params, { state: params.state });
-      return await client.userinfo<OAuthProfile>(tokens.access_token || '');
+      const tokens = await authorizationCodeGrant(client, new URL(url), { expectedState, pkceCodeVerifier });
+      const profile = await fetchUserInfo(client, tokens.access_token, oidc.skipSubjectCheck);
+      if (!profile.sub) {
+        throw new Error('Unexpected profile response, no `sub`');
+      }
+
+      return profile;
     } catch (error: Error | any) {
       if (error.message.includes('unexpected JWT alg received')) {
         this.logger.warn(
@@ -43,8 +79,23 @@ export class OAuthRepository implements IOAuthRepository {
         );
       }
 
-      throw error;
+      this.logger.error(`OAuth login failed: ${error.message}`);
+      this.logger.error(error);
+
+      throw new Error('OAuth login failed', { cause: error });
     }
+  }
+
+  async getProfilePicture(url: string) {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch picture: ${response.statusText}`);
+    }
+
+    return {
+      data: await response.arrayBuffer(),
+      contentType: response.headers.get('content-type'),
+    };
   }
 
   private async getClient({
@@ -53,19 +104,51 @@ export class OAuthRepository implements IOAuthRepository {
     clientSecret,
     profileSigningAlgorithm,
     signingAlgorithm,
+    tokenEndpointAuthMethod,
+    timeout,
   }: OAuthConfig) {
     try {
-      const issuer = await Issuer.discover(issuerUrl);
-      return new issuer.Client({
-        client_id: clientId,
-        client_secret: clientSecret,
-        response_types: ['code'],
-        userinfo_signed_response_alg: profileSigningAlgorithm === 'none' ? undefined : profileSigningAlgorithm,
-        id_token_signed_response_alg: signingAlgorithm,
-      });
+      const { allowInsecureRequests, discovery } = await import('openid-client');
+      return await discovery(
+        new URL(issuerUrl),
+        clientId,
+        {
+          client_secret: clientSecret,
+          response_types: ['code'],
+          userinfo_signed_response_alg: profileSigningAlgorithm === 'none' ? undefined : profileSigningAlgorithm,
+          id_token_signed_response_alg: signingAlgorithm,
+        },
+        await this.getTokenAuthMethod(tokenEndpointAuthMethod, clientSecret),
+        {
+          execute: [allowInsecureRequests],
+          timeout,
+        },
+      );
     } catch (error: any | AggregateError) {
       this.logger.error(`Error in OAuth discovery: ${error}`, error?.stack, error?.errors);
       throw new InternalServerErrorException(`Error in OAuth discovery: ${error}`, { cause: error });
+    }
+  }
+
+  private async getTokenAuthMethod(tokenEndpointAuthMethod: OAuthTokenEndpointAuthMethod, clientSecret?: string) {
+    const { None, ClientSecretPost, ClientSecretBasic } = await import('openid-client');
+
+    if (!clientSecret) {
+      return None();
+    }
+
+    switch (tokenEndpointAuthMethod) {
+      case OAuthTokenEndpointAuthMethod.ClientSecretPost: {
+        return ClientSecretPost(clientSecret);
+      }
+
+      case OAuthTokenEndpointAuthMethod.ClientSecretBasic: {
+        return ClientSecretBasic(clientSecret);
+      }
+
+      default: {
+        return None();
+      }
     }
   }
 }

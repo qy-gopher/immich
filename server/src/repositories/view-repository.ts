@@ -1,48 +1,50 @@
-import { InjectRepository } from '@nestjs/typeorm';
+import { Kysely } from 'kysely';
+import { InjectKysely } from 'nestjs-kysely';
 import { DummyValue, GenerateSql } from 'src/decorators';
-import { AssetEntity } from 'src/entities/asset.entity';
-import { IViewRepository } from 'src/interfaces/view.interface';
-import { Brackets, Repository } from 'typeorm';
+import { AssetVisibility } from 'src/enum';
+import { DB } from 'src/schema';
+import { asUuid, withExif } from 'src/utils/database';
 
-export class ViewRepository implements IViewRepository {
-  constructor(@InjectRepository(AssetEntity) private assetRepository: Repository<AssetEntity>) {}
+export class ViewRepository {
+  constructor(@InjectKysely() private db: Kysely<DB>) {}
 
-  async getUniqueOriginalPaths(userId: string): Promise<string[]> {
-    const results = await this.assetRepository
-      .createQueryBuilder('asset')
-      .where({
-        isVisible: true,
-        isArchived: false,
-        ownerId: userId,
-      })
-      .select("DISTINCT substring(asset.originalPath FROM '^(.*/)[^/]*$')", 'directoryPath')
-      .getRawMany();
+  @GenerateSql({ params: [DummyValue.UUID] })
+  async getUniqueOriginalPaths(userId: string) {
+    const results = await this.db
+      .selectFrom('asset')
+      .select((eb) => eb.fn<string>('substring', ['asset.originalPath', eb.val('^(.*/)[^/]*$')]).as('directoryPath'))
+      .distinct()
+      .where('ownerId', '=', asUuid(userId))
+      .where('visibility', '=', AssetVisibility.Timeline)
+      .where('deletedAt', 'is', null)
+      .where('fileCreatedAt', 'is not', null)
+      .where('fileModifiedAt', 'is not', null)
+      .where('localDateTime', 'is not', null)
+      .execute();
 
-    return results.map((row: { directoryPath: string }) => row.directoryPath.replaceAll(/^\/|\/$/g, ''));
+    return results.map((row) => row.directoryPath.replaceAll(/\/$/g, ''));
   }
 
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.STRING] })
-  async getAssetsByOriginalPath(userId: string, partialPath: string): Promise<AssetEntity[]> {
-    const normalizedPath = partialPath.replaceAll(/^\/|\/$/g, '');
-    const assets = await this.assetRepository
-      .createQueryBuilder('asset')
-      .where({
-        isVisible: true,
-        isArchived: false,
-        ownerId: userId,
-      })
-      .leftJoinAndSelect('asset.exifInfo', 'exifInfo')
-      .andWhere(
-        new Brackets((qb) => {
-          qb.where('asset.originalPath LIKE :likePath', { likePath: `%${normalizedPath}/%` }).andWhere(
-            'asset.originalPath NOT LIKE :notLikePath',
-            { notLikePath: `%${normalizedPath}/%/%` },
-          );
-        }),
-      )
-      .orderBy(String.raw`regexp_replace(asset.originalPath, '.*/(.+)', '\1')`, 'ASC')
-      .getMany();
+  async getAssetsByOriginalPath(userId: string, partialPath: string) {
+    const normalizedPath = partialPath.replaceAll(/\/$/g, '');
 
-    return assets;
+    return this.db
+      .selectFrom('asset')
+      .selectAll('asset')
+      .$call(withExif)
+      .where('ownerId', '=', asUuid(userId))
+      .where('visibility', '=', AssetVisibility.Timeline)
+      .where('deletedAt', 'is', null)
+      .where('fileCreatedAt', 'is not', null)
+      .where('fileModifiedAt', 'is not', null)
+      .where('localDateTime', 'is not', null)
+      .where('originalPath', 'like', `%${normalizedPath}/%`)
+      .where('originalPath', 'not like', `%${normalizedPath}/%/%`)
+      .orderBy(
+        (eb) => eb.fn('regexp_replace', ['asset.originalPath', eb.val('.*/(.+)'), eb.val(String.raw`\1`)]),
+        'asc',
+      )
+      .execute();
   }
 }

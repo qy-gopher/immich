@@ -1,13 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:immich_mobile/entities/exif_info.entity.dart';
+import 'package:immich_mobile/constants/enums.dart';
+import 'package:immich_mobile/domain/models/exif.model.dart';
+import 'package:immich_mobile/extensions/string_extensions.dart';
+import 'package:immich_mobile/infrastructure/entities/exif.entity.dart' as entity;
+import 'package:immich_mobile/infrastructure/utils/exif.converter.dart';
+import 'package:immich_mobile/utils/diff.dart';
 import 'package:immich_mobile/utils/hash.dart';
 import 'package:isar/isar.dart';
 import 'package:openapi/api.dart';
-import 'package:photo_manager/photo_manager.dart' show AssetEntity;
-import 'package:immich_mobile/extensions/string_extensions.dart';
 import 'package:path/path.dart' as p;
+import 'package:photo_manager/photo_manager.dart' show AssetEntity;
 
 part 'asset.entity.g.dart';
 
@@ -27,20 +31,18 @@ class Asset {
         width = remote.exifInfo?.exifImageWidth?.toInt(),
         livePhotoVideoId = remote.livePhotoVideoId,
         ownerId = fastHash(remote.ownerId),
-        exifInfo =
-            remote.exifInfo != null ? ExifInfo.fromDto(remote.exifInfo!) : null,
+        exifInfo = remote.exifInfo == null ? null : ExifDtoConverter.fromDto(remote.exifInfo!),
         isFavorite = remote.isFavorite,
         isArchived = remote.isArchived,
         isTrashed = remote.isTrashed,
         isOffline = remote.isOffline,
         // workaround to nullify stackPrimaryAssetId for the parent asset until we refactor the mobile app
         // stack handling to properly handle it
-        stackPrimaryAssetId = remote.stack?.primaryAssetId == remote.id
-            ? null
-            : remote.stack?.primaryAssetId,
+        stackPrimaryAssetId = remote.stack?.primaryAssetId == remote.id ? null : remote.stack?.primaryAssetId,
         stackCount = remote.stack?.assetCount ?? 0,
         stackId = remote.stack?.id,
-        thumbhash = remote.thumbhash;
+        thumbhash = remote.thumbhash,
+        visibility = getVisibility(remote.visibility);
 
   Asset({
     this.id = Isar.autoIncrement,
@@ -66,6 +68,7 @@ class Asset {
     this.stackCount = 0,
     this.isOffline = false,
     this.thumbhash,
+    this.visibility = AssetVisibilityEnum.timeline,
   });
 
   @ignore
@@ -100,8 +103,7 @@ class Asset {
       throw Exception('Asset $fileName has no local data');
     }
 
-    final updatedLocal =
-        _didUpdateLocal ? local : await local.obtainForNewProperties();
+    final updatedLocal = _didUpdateLocal ? local : await local.obtainForNewProperties();
     if (updatedLocal == null) {
       throw Exception('Could not fetch local data for $fileName');
     }
@@ -168,16 +170,16 @@ class Asset {
 
   int stackCount;
 
+  @Enumerated(EnumType.ordinal)
+  AssetVisibilityEnum visibility;
+
   /// Returns null if the asset has no sync access to the exif info
   @ignore
   double? get aspectRatio {
     final orientatedWidth = this.orientatedWidth;
     final orientatedHeight = this.orientatedHeight;
 
-    if (orientatedWidth != null &&
-        orientatedHeight != null &&
-        orientatedWidth > 0 &&
-        orientatedHeight > 0) {
+    if (orientatedWidth != null && orientatedHeight != null && orientatedWidth > 0 && orientatedHeight > 0) {
       return orientatedWidth.toDouble() / orientatedHeight.toDouble();
     }
 
@@ -344,7 +346,8 @@ class Asset {
         a.thumbhash != thumbhash ||
         stackId != a.stackId ||
         stackCount != a.stackCount ||
-        stackPrimaryAssetId == null && a.stackPrimaryAssetId != null;
+        stackPrimaryAssetId == null && a.stackPrimaryAssetId != null ||
+        visibility != a.visibility;
   }
 
   /// Returns a new [Asset] with values from this and merged & updated with [a]
@@ -354,31 +357,30 @@ class Asset {
       // take most values from newer asset
       // keep vales that can never be set by the asset not in DB
       if (a.isRemote) {
-        return a._copyWith(
+        return a.copyWith(
           id: id,
           localId: localId,
           width: a.width ?? width,
           height: a.height ?? height,
-          exifInfo: a.exifInfo?.copyWith(id: id) ?? exifInfo,
+          exifInfo: a.exifInfo?.copyWith(assetId: id) ?? exifInfo,
         );
       } else if (isRemote) {
-        return _copyWith(
+        return copyWith(
           localId: localId ?? a.localId,
           width: width ?? a.width,
           height: height ?? a.height,
-          exifInfo: exifInfo ?? a.exifInfo?.copyWith(id: id),
+          exifInfo: exifInfo ?? a.exifInfo?.copyWith(assetId: id),
         );
       } else {
         // TODO: Revisit this and remove all bool field assignments
-        return a._copyWith(
+        return a.copyWith(
           id: id,
           remoteId: remoteId,
           livePhotoVideoId: livePhotoVideoId,
           // workaround to nullify stackPrimaryAssetId for the parent asset until we refactor the mobile app
           // stack handling to properly handle it
           stackId: stackId,
-          stackPrimaryAssetId:
-              stackPrimaryAssetId == remoteId ? null : stackPrimaryAssetId,
+          stackPrimaryAssetId: stackPrimaryAssetId == remoteId ? null : stackPrimaryAssetId,
           stackCount: stackCount,
           isFavorite: isFavorite,
           isArchived: isArchived,
@@ -390,7 +392,7 @@ class Asset {
       // fill in potentially missing values, i.e. merge assets
       if (a.isRemote) {
         // values from remote take precedence
-        return _copyWith(
+        return copyWith(
           remoteId: a.remoteId,
           width: a.width,
           height: a.height,
@@ -398,31 +400,29 @@ class Asset {
           // workaround to nullify stackPrimaryAssetId for the parent asset until we refactor the mobile app
           // stack handling to properly handle it
           stackId: a.stackId,
-          stackPrimaryAssetId: a.stackPrimaryAssetId == a.remoteId
-              ? null
-              : a.stackPrimaryAssetId,
+          stackPrimaryAssetId: a.stackPrimaryAssetId == a.remoteId ? null : a.stackPrimaryAssetId,
           stackCount: a.stackCount,
           // isFavorite + isArchived are not set by device-only assets
           isFavorite: a.isFavorite,
           isArchived: a.isArchived,
           isTrashed: a.isTrashed,
           isOffline: a.isOffline,
-          exifInfo: a.exifInfo?.copyWith(id: id) ?? exifInfo,
+          exifInfo: a.exifInfo?.copyWith(assetId: id) ?? exifInfo,
           thumbhash: a.thumbhash,
         );
       } else {
         // add only missing values (and set isLocal to true)
-        return _copyWith(
+        return copyWith(
           localId: localId ?? a.localId,
           width: width ?? a.width,
           height: height ?? a.height,
-          exifInfo: exifInfo ?? a.exifInfo?.copyWith(id: id),
+          exifInfo: exifInfo ?? a.exifInfo?.copyWith(assetId: id), // updated to use assetId
         );
       }
     }
   }
 
-  Asset _copyWith({
+  Asset copyWith({
     Id? id,
     String? checksum,
     String? remoteId,
@@ -446,6 +446,7 @@ class Asset {
     String? stackPrimaryAssetId,
     int? stackCount,
     String? thumbhash,
+    AssetVisibilityEnum? visibility,
   }) =>
       Asset(
         id: id ?? this.id,
@@ -471,20 +472,21 @@ class Asset {
         stackPrimaryAssetId: stackPrimaryAssetId ?? this.stackPrimaryAssetId,
         stackCount: stackCount ?? this.stackCount,
         thumbhash: thumbhash ?? this.thumbhash,
+        visibility: visibility ?? this.visibility,
       );
 
   Future<void> put(Isar db) async {
     await db.assets.put(this);
     if (exifInfo != null) {
-      exifInfo!.id = id;
-      await db.exifInfos.put(exifInfo!);
+      await db.exifInfos.put(entity.ExifInfo.fromDto(exifInfo!.copyWith(assetId: id)));
     }
   }
 
   static int compareById(Asset a, Asset b) => a.id.compareTo(b.id);
 
-  static int compareByChecksum(Asset a, Asset b) =>
-      a.checksum.compareTo(b.checksum);
+  static int compareByLocalId(Asset a, Asset b) => compareToNullable(a.localId, b.localId);
+
+  static int compareByChecksum(Asset a, Asset b) => a.checksum.compareTo(b.checksum);
 
   static int compareByOwnerChecksum(Asset a, Asset b) {
     final int ownerIdOrder = a.ownerId.compareTo(b.ownerId);
@@ -532,8 +534,16 @@ class Asset {
   "isArchived": $isArchived,
   "isTrashed": $isTrashed,
   "isOffline": $isOffline,
+  "visibility": "$visibility",
 }""";
   }
+
+  static getVisibility(AssetVisibility visibility) => switch (visibility) {
+        AssetVisibility.archive => AssetVisibilityEnum.archive,
+        AssetVisibility.hidden => AssetVisibilityEnum.hidden,
+        AssetVisibility.locked => AssetVisibilityEnum.locked,
+        AssetVisibility.timeline || _ => AssetVisibilityEnum.timeline,
+      };
 }
 
 enum AssetType {
@@ -545,19 +555,13 @@ enum AssetType {
 }
 
 extension AssetTypeEnumHelper on AssetTypeEnum {
-  AssetType toAssetType() {
-    switch (this) {
-      case AssetTypeEnum.IMAGE:
-        return AssetType.image;
-      case AssetTypeEnum.VIDEO:
-        return AssetType.video;
-      case AssetTypeEnum.AUDIO:
-        return AssetType.audio;
-      case AssetTypeEnum.OTHER:
-        return AssetType.other;
-    }
-    throw Exception();
-  }
+  AssetType toAssetType() => switch (this) {
+        AssetTypeEnum.IMAGE => AssetType.image,
+        AssetTypeEnum.VIDEO => AssetType.video,
+        AssetTypeEnum.AUDIO => AssetType.audio,
+        AssetTypeEnum.OTHER => AssetType.other,
+        _ => throw Exception(),
+      };
 }
 
 /// Describes where the information of this asset came from:
@@ -569,16 +573,11 @@ enum AssetState {
 }
 
 extension AssetsHelper on IsarCollection<Asset> {
-  Future<int> deleteAllByRemoteId(Iterable<String> ids) =>
-      ids.isEmpty ? Future.value(0) : remote(ids).deleteAll();
-  Future<int> deleteAllByLocalId(Iterable<String> ids) =>
-      ids.isEmpty ? Future.value(0) : local(ids).deleteAll();
-  Future<List<Asset>> getAllByRemoteId(Iterable<String> ids) =>
-      ids.isEmpty ? Future.value([]) : remote(ids).findAll();
-  Future<List<Asset>> getAllByLocalId(Iterable<String> ids) =>
-      ids.isEmpty ? Future.value([]) : local(ids).findAll();
-  Future<Asset?> getByRemoteId(String id) =>
-      where().remoteIdEqualTo(id).findFirst();
+  Future<int> deleteAllByRemoteId(Iterable<String> ids) => ids.isEmpty ? Future.value(0) : remote(ids).deleteAll();
+  Future<int> deleteAllByLocalId(Iterable<String> ids) => ids.isEmpty ? Future.value(0) : local(ids).deleteAll();
+  Future<List<Asset>> getAllByRemoteId(Iterable<String> ids) => ids.isEmpty ? Future.value([]) : remote(ids).findAll();
+  Future<List<Asset>> getAllByLocalId(Iterable<String> ids) => ids.isEmpty ? Future.value([]) : local(ids).findAll();
+  Future<Asset?> getByRemoteId(String id) => where().remoteIdEqualTo(id).findFirst();
 
   QueryBuilder<Asset, Asset, QAfterWhereClause> remote(
     Iterable<String> ids,

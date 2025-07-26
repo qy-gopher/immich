@@ -10,7 +10,7 @@ class DownloadInfo {
   // enum
   final TaskStatus status;
 
-  DownloadInfo({
+  const DownloadInfo({
     required this.fileName,
     required this.progress,
     required this.status,
@@ -46,20 +46,16 @@ class DownloadInfo {
 
   String toJson() => json.encode(toMap());
 
-  factory DownloadInfo.fromJson(String source) =>
-      DownloadInfo.fromMap(json.decode(source) as Map<String, dynamic>);
+  factory DownloadInfo.fromJson(String source) => DownloadInfo.fromMap(json.decode(source) as Map<String, dynamic>);
 
   @override
-  String toString() =>
-      'DownloadInfo(fileName: $fileName, progress: $progress, status: $status)';
+  String toString() => 'DownloadInfo(fileName: $fileName, progress: $progress, status: $status)';
 
   @override
   bool operator ==(covariant DownloadInfo other) {
     if (identical(this, other)) return true;
 
-    return other.fileName == fileName &&
-        other.progress == progress &&
-        other.status == status;
+    return other.fileName == fileName && other.progress == progress && other.status == status;
   }
 
   @override
@@ -71,7 +67,7 @@ class DownloadState {
   final TaskStatus downloadStatus;
   final Map<String, DownloadInfo> taskProgress;
   final bool showProgress;
-  DownloadState({
+  const DownloadState({
     required this.downloadStatus,
     required this.taskProgress,
     required this.showProgress,
@@ -104,6 +100,5 @@ class DownloadState {
   }
 
   @override
-  int get hashCode =>
-      downloadStatus.hashCode ^ taskProgress.hashCode ^ showProgress.hashCode;
+  int get hashCode => downloadStatus.hashCode ^ taskProgress.hashCode ^ showProgress.hashCode;
 }

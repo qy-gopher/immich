@@ -8,10 +8,11 @@ import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/models/albums/asset_selection_page_result.model.dart';
 import 'package:immich_mobile/providers/album/album.provider.dart';
 import 'package:immich_mobile/providers/album/album_title.provider.dart';
-import 'package:immich_mobile/providers/asset.provider.dart';
+import 'package:immich_mobile/providers/album/album_viewer.provider.dart';
 import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/widgets/album/album_action_filled_button.dart';
 import 'package:immich_mobile/widgets/album/album_title_text_field.dart';
+import 'package:immich_mobile/widgets/album/album_viewer_editable_description.dart';
 import 'package:immich_mobile/widgets/album/shared_album_thumbnail_image.dart';
 
 @RoutePage()
@@ -26,9 +27,9 @@ class CreateAlbumPage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final albumTitleController =
-        useTextEditingController.fromValue(TextEditingValue.empty);
+    final albumTitleController = useTextEditingController.fromValue(TextEditingValue.empty);
     final albumTitleTextFieldFocusNode = useFocusNode();
+    final albumDescriptionTextFieldFocusNode = useFocusNode();
     final isAlbumTitleTextFieldFocus = useState(false);
     final isAlbumTitleEmpty = useState(true);
     final selectedAssets = useState<Set<Asset>>(
@@ -37,24 +38,21 @@ class CreateAlbumPage extends HookConsumerWidget {
 
     void onBackgroundTapped() {
       albumTitleTextFieldFocusNode.unfocus();
+      albumDescriptionTextFieldFocusNode.unfocus();
       isAlbumTitleTextFieldFocus.value = false;
 
       if (albumTitleController.text.isEmpty) {
         albumTitleController.text = 'create_album_page_untitled'.tr();
         isAlbumTitleEmpty.value = false;
-        ref
-            .watch(albumTitleProvider.notifier)
-            .setAlbumTitle('create_album_page_untitled'.tr());
+        ref.watch(albumTitleProvider.notifier).setAlbumTitle('create_album_page_untitled'.tr());
       }
     }
 
     onSelectPhotosButtonPressed() async {
-      AssetSelectionPageResult? selectedAsset =
-          await context.pushRoute<AssetSelectionPageResult?>(
+      AssetSelectionPageResult? selectedAsset = await context.pushRoute<AssetSelectionPageResult?>(
         AlbumAssetSelectionRoute(
           existingAssets: selectedAssets.value,
           canDeselect: true,
-          query: getRemoteAssetQuery(ref),
         ),
       );
       if (selectedAsset == null) {
@@ -75,6 +73,19 @@ class CreateAlbumPage extends HookConsumerWidget {
           albumTitleTextFieldFocusNode: albumTitleTextFieldFocusNode,
           albumTitleController: albumTitleController,
           isAlbumTitleTextFieldFocus: isAlbumTitleTextFieldFocus,
+        ),
+      );
+    }
+
+    buildDescriptionInputField() {
+      return Padding(
+        padding: const EdgeInsets.only(
+          right: 10,
+          left: 10,
+        ),
+        child: AlbumViewerEditableDescription(
+          albumDescription: '',
+          descriptionFocusNode: albumDescriptionTextFieldFocusNode,
         ),
       );
     }
@@ -103,10 +114,11 @@ class CreateAlbumPage extends HookConsumerWidget {
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
                 alignment: Alignment.centerLeft,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.all(
+                    Radius.circular(10),
+                  ),
                 ),
                 backgroundColor: context.colorScheme.surfaceContainerHigh,
               ),
@@ -144,7 +156,7 @@ class CreateAlbumPage extends HookConsumerWidget {
               AlbumActionFilledButton(
                 iconData: Icons.add_photo_alternate_outlined,
                 onPressed: onSelectPhotosButtonPressed,
-                labelText: "share_add_photos".tr(),
+                labelText: "add_photos".tr(),
               ),
             ],
           ),
@@ -180,18 +192,18 @@ class CreateAlbumPage extends HookConsumerWidget {
       return const SliverToBoxAdapter();
     }
 
-    createNonSharedAlbum() async {
+    Future<void> createAlbum() async {
       onBackgroundTapped();
       var newAlbum = await ref.watch(albumProvider.notifier).createAlbum(
-            ref.watch(albumTitleProvider),
+            ref.read(albumTitleProvider),
             selectedAssets.value,
           );
 
       if (newAlbum != null) {
-        ref.watch(albumProvider.notifier).refreshRemoteAlbums();
+        ref.read(albumProvider.notifier).refreshRemoteAlbums();
         selectedAssets.value = {};
-        ref.watch(albumTitleProvider.notifier).clearAlbumTitle();
-
+        ref.read(albumTitleProvider.notifier).clearAlbumTitle();
+        ref.read(albumViewerProvider.notifier).disableEditAlbum();
         context.replaceRoute(AlbumViewerRoute(albumId: newAlbum.id));
       }
     }
@@ -209,20 +221,16 @@ class CreateAlbumPage extends HookConsumerWidget {
           icon: const Icon(Icons.close_rounded),
         ),
         title: const Text(
-          'share_create_album',
+          'create_album',
         ).tr(),
         actions: [
           TextButton(
-            onPressed: albumTitleController.text.isNotEmpty
-                ? createNonSharedAlbum
-                : null,
+            onPressed: albumTitleController.text.isNotEmpty ? createAlbum : null,
             child: Text(
-              'create_shared_album_page_create'.tr(),
+              'create'.tr(),
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: albumTitleController.text.isNotEmpty
-                    ? context.primaryColor
-                    : context.themeData.disabledColor,
+                color: albumTitleController.text.isNotEmpty ? context.primaryColor : context.themeData.disabledColor,
               ),
             ),
           ),
@@ -239,10 +247,11 @@ class CreateAlbumPage extends HookConsumerWidget {
               pinned: true,
               floating: false,
               bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(96.0),
+                preferredSize: const Size.fromHeight(125.0),
                 child: Column(
                   children: [
                     buildTitleInputField(),
+                    buildDescriptionInputField(),
                     if (selectedAssets.value.isNotEmpty) buildControlButton(),
                   ],
                 ),

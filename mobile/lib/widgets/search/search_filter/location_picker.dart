@@ -15,8 +15,7 @@ class LocationPicker extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final countryTextController =
-        useTextEditingController(text: filter?.country);
+    final countryTextController = useTextEditingController(text: filter?.country);
     final stateTextController = useTextEditingController(text: filter?.state);
     final cityTextController = useTextEditingController(text: filter?.city);
 
@@ -63,7 +62,7 @@ class LocationPicker extends HookConsumerWidget {
                 .toList(),
             _ => [],
           },
-          label: const Text('search_filter_location_country').tr(),
+          label: const Text('country').tr(),
           controller: countryTextController,
           onSelected: (value) {
             if (value.toString() == selectedCountry.value) {
@@ -95,7 +94,7 @@ class LocationPicker extends HookConsumerWidget {
                 .toList(),
             _ => [],
           },
-          label: const Text('search_filter_location_state').tr(),
+          label: const Text('state').tr(),
           controller: stateTextController,
           onSelected: (value) {
             if (value.toString() == selectedState.value) {
@@ -126,7 +125,7 @@ class LocationPicker extends HookConsumerWidget {
                 .toList(),
             _ => [],
           },
-          label: const Text('search_filter_location_city').tr(),
+          label: const Text('city').tr(),
           controller: cityTextController,
           onSelected: (value) {
             selectedCity.value = value.toString();

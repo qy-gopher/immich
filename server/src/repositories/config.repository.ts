@@ -1,17 +1,109 @@
+import { RegisterQueueOptions } from '@nestjs/bullmq';
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import { QueueOptions } from 'bullmq';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import { Request, Response } from 'express';
-import { CLS_ID } from 'nestjs-cls';
-import { join, resolve } from 'node:path';
+import { RedisOptions } from 'ioredis';
+import { CLS_ID, ClsModuleOptions } from 'nestjs-cls';
+import { OpenTelemetryModuleOptions } from 'nestjs-otel/lib/interfaces';
+import { join } from 'node:path';
 import { citiesFile, excludePaths, IWorker } from 'src/constants';
 import { Telemetry } from 'src/decorators';
 import { EnvDto } from 'src/dtos/env.dto';
-import { ImmichEnvironment, ImmichHeader, ImmichTelemetry, ImmichWorker } from 'src/enum';
-import { EnvData, IConfigRepository } from 'src/interfaces/config.interface';
-import { DatabaseExtension } from 'src/interfaces/database.interface';
-import { QueueName } from 'src/interfaces/job.interface';
+import {
+  DatabaseExtension,
+  ImmichEnvironment,
+  ImmichHeader,
+  ImmichTelemetry,
+  ImmichWorker,
+  LogLevel,
+  QueueName,
+} from 'src/enum';
+import { DatabaseConnectionParams, VectorExtension } from 'src/types';
 import { setDifference } from 'src/utils/set';
+
+export interface EnvData {
+  host?: string;
+  port: number;
+  environment: ImmichEnvironment;
+  configFile?: string;
+  logLevel?: LogLevel;
+
+  buildMetadata: {
+    build?: string;
+    buildUrl?: string;
+    buildImage?: string;
+    buildImageUrl?: string;
+    repository?: string;
+    repositoryUrl?: string;
+    sourceRef?: string;
+    sourceCommit?: string;
+    sourceUrl?: string;
+    thirdPartySourceUrl?: string;
+    thirdPartyBugFeatureUrl?: string;
+    thirdPartyDocumentationUrl?: string;
+    thirdPartySupportUrl?: string;
+  };
+
+  bull: {
+    config: QueueOptions;
+    queues: RegisterQueueOptions[];
+  };
+
+  cls: {
+    config: ClsModuleOptions;
+  };
+
+  database: {
+    config: DatabaseConnectionParams;
+    skipMigrations: boolean;
+    vectorExtension?: VectorExtension;
+  };
+
+  licensePublicKey: {
+    client: string;
+    server: string;
+  };
+
+  network: {
+    trustedProxies: string[];
+  };
+
+  otel: OpenTelemetryModuleOptions;
+
+  resourcePaths: {
+    lockFile: string;
+    geodata: {
+      dateFile: string;
+      admin1: string;
+      admin2: string;
+      cities500: string;
+      naturalEarthCountriesPath: string;
+    };
+    web: {
+      root: string;
+      indexHtml: string;
+    };
+  };
+
+  redis: RedisOptions;
+
+  telemetry: {
+    apiPort: number;
+    microservicesPort: number;
+    metrics: Set<ImmichTelemetry>;
+  };
+
+  storage: {
+    ignoreMountCheckErrors: boolean;
+  };
+
+  workers: ImmichWorker[];
+
+  noColor: boolean;
+  nodeVersion?: string;
+}
 
 const productionKeys = {
   client:
@@ -39,12 +131,14 @@ const getEnv = (): EnvData => {
   const dto = plainToInstance(EnvDto, process.env);
   const errors = validateSync(dto);
   if (errors.length > 0) {
-    throw new Error(
-      `Invalid environment variables: ${errors.map((error) => `${error.property}=${error.value}`).join(', ')}`,
-    );
+    const messages = [`Invalid environment variables: `];
+    for (const error of errors) {
+      messages.push(`  - ${error.property}=${error.value} (${Object.values(error.constraints || {}).join(', ')})`);
+    }
+    throw new Error(messages.join('\n'));
   }
 
-  const includedWorkers = asSet(dto.IMMICH_WORKERS_INCLUDE, [ImmichWorker.API, ImmichWorker.MICROSERVICES]);
+  const includedWorkers = asSet(dto.IMMICH_WORKERS_INCLUDE, [ImmichWorker.Api, ImmichWorker.Microservices]);
   const excludedWorkers = asSet(dto.IMMICH_WORKERS_EXCLUDE, []);
   const workers = [...setDifference(includedWorkers, excludedWorkers)];
   for (const worker of workers) {
@@ -53,17 +147,13 @@ const getEnv = (): EnvData => {
     }
   }
 
-  const environment = dto.IMMICH_ENV || ImmichEnvironment.PRODUCTION;
-  const isProd = environment === ImmichEnvironment.PRODUCTION;
+  const environment = dto.IMMICH_ENV || ImmichEnvironment.Production;
+  const isProd = environment === ImmichEnvironment.Production;
   const buildFolder = dto.IMMICH_BUILD_DATA || '/build';
   const folders = {
-    // eslint-disable-next-line unicorn/prefer-module
-    dist: resolve(`${__dirname}/..`),
     geodata: join(buildFolder, 'geodata'),
     web: join(buildFolder, 'www'),
   };
-
-  const databaseUrl = dto.DB_URL;
 
   let redisConfig = {
     host: dto.REDIS_HOSTNAME || 'redis',
@@ -93,6 +183,34 @@ const getEnv = (): EnvData => {
   for (const telemetry of telemetries) {
     if (!TELEMETRY_TYPES.has(telemetry)) {
       throw new Error(`Invalid telemetry found: ${telemetry}`);
+    }
+  }
+
+  const databaseConnection: DatabaseConnectionParams = dto.DB_URL
+    ? { connectionType: 'url', url: dto.DB_URL }
+    : {
+        connectionType: 'parts',
+        host: dto.DB_HOSTNAME || 'database',
+        port: dto.DB_PORT || 5432,
+        username: dto.DB_USERNAME || 'postgres',
+        password: dto.DB_PASSWORD || 'postgres',
+        database: dto.DB_DATABASE_NAME || 'immich',
+        ssl: dto.DB_SSL_MODE || undefined,
+      };
+
+  let vectorExtension: VectorExtension | undefined;
+  switch (dto.DB_VECTOR_EXTENSION) {
+    case 'pgvector': {
+      vectorExtension = DatabaseExtension.Vector;
+      break;
+    }
+    case 'pgvecto.rs': {
+      vectorExtension = DatabaseExtension.Vectors;
+      break;
+    }
+    case 'vectorchord': {
+      vectorExtension = DatabaseExtension.VectorChord;
+      break;
     }
   }
 
@@ -138,40 +256,20 @@ const getEnv = (): EnvData => {
           mount: true,
           generateId: true,
           setup: (cls, req: Request, res: Response) => {
-            const headerValues = req.headers[ImmichHeader.CID];
+            const headerValues = req.headers[ImmichHeader.Cid];
             const headerValue = Array.isArray(headerValues) ? headerValues[0] : headerValues;
             const cid = headerValue || cls.get(CLS_ID);
             cls.set(CLS_ID, cid);
-            res.header(ImmichHeader.CID, cid);
+            res.header(ImmichHeader.Cid, cid);
           },
         },
       },
     },
 
     database: {
-      config: {
-        type: 'postgres',
-        entities: [`${folders.dist}/entities` + '/*.entity.{js,ts}'],
-        migrations: [`${folders.dist}/migrations` + '/*.{js,ts}'],
-        subscribers: [`${folders.dist}/subscribers` + '/*.{js,ts}'],
-        migrationsRun: false,
-        synchronize: false,
-        connectTimeoutMS: 10_000, // 10 seconds
-        parseInt8: true,
-        ...(databaseUrl
-          ? { connectionType: 'url', url: databaseUrl }
-          : {
-              connectionType: 'parts',
-              host: dto.DB_HOSTNAME || 'database',
-              port: dto.DB_PORT || 5432,
-              username: dto.DB_USERNAME || 'postgres',
-              password: dto.DB_PASSWORD || 'postgres',
-              database: dto.DB_DATABASE_NAME || 'immich',
-            }),
-      },
-
+      config: databaseConnection,
       skipMigrations: dto.DB_SKIP_MIGRATIONS ?? false,
-      vectorExtension: dto.DB_VECTOR_EXTENSION === 'pgvector' ? DatabaseExtension.VECTOR : DatabaseExtension.VECTORS,
+      vectorExtension,
     },
 
     licensePublicKey: isProd ? productionKeys : stagingKeys,
@@ -182,9 +280,9 @@ const getEnv = (): EnvData => {
 
     otel: {
       metrics: {
-        hostMetrics: telemetries.has(ImmichTelemetry.HOST),
+        hostMetrics: telemetries.has(ImmichTelemetry.Host),
         apiMetrics: {
-          enable: telemetries.has(ImmichTelemetry.API),
+          enable: telemetries.has(ImmichTelemetry.Api),
           ignoreRoutes: excludePaths,
         },
       },
@@ -227,15 +325,19 @@ let cached: EnvData | undefined;
 
 @Injectable()
 @Telemetry({ enabled: false })
-export class ConfigRepository implements IConfigRepository {
+export class ConfigRepository {
   constructor(@Inject(IWorker) @Optional() private worker?: ImmichWorker) {}
 
-  getEnv(): EnvData {
+  getEnv() {
     if (!cached) {
       cached = getEnv();
     }
 
     return cached;
+  }
+
+  isDev() {
+    return this.getEnv().environment === ImmichEnvironment.Development;
   }
 
   getWorker() {

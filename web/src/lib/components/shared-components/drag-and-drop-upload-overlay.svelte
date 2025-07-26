@@ -1,15 +1,16 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { shouldIgnoreEvent } from '$lib/actions/shortcut';
+  import { authManager } from '$lib/managers/auth-manager.svelte';
   import { dragAndDropFilesStore } from '$lib/stores/drag-and-drop-files.store';
   import { fileUploadHandler } from '$lib/utils/file-uploader';
-  import { isAlbumsRoute, isSharedLinkRoute } from '$lib/utils/navigation';
+  import { isAlbumsRoute, isLockedFolderRoute } from '$lib/utils/navigation';
   import { t } from 'svelte-i18n';
   import { fade } from 'svelte/transition';
   import ImmichLogo from './immich-logo.svelte';
 
   let albumId = $derived(isAlbumsRoute(page.route?.id) ? page.params.albumId : undefined);
-  let isShare = $derived(isSharedLinkRoute(page.route?.id));
+  let isInLockedFolder = $derived(isLockedFolderRoute(page.route.id));
 
   let dragStartTarget: EventTarget | null = $state(null);
 
@@ -50,6 +51,7 @@
     const entries: FileSystemEntry[] = [];
     const files: File[] = [];
     for (const item of dataTransfer.items) {
+      // eslint-disable-next-line tscompat/tscompat
       const entry = item.webkitGetAsEntry();
       if (entry) {
         entries.push(entry);
@@ -66,6 +68,7 @@
     return handleFiles([...files, ...directoryFiles]);
   };
 
+  // eslint-disable-next-line tscompat/tscompat
   const browserSupportsDirectoryUpload = () => typeof DataTransferItem.prototype.webkitGetAsEntry === 'function';
 
   const getAllFilesFromTransferEntries = async (transferEntries: FileSystemEntry[]): Promise<File[]> => {
@@ -123,10 +126,10 @@
     }
 
     const filesArray: File[] = Array.from<File>(files);
-    if (isShare) {
+    if (authManager.key) {
       dragAndDropFilesStore.set({ isDragging: true, files: filesArray });
     } else {
-      await fileUploadHandler(filesArray, albumId);
+      await fileUploadHandler({ files: filesArray, albumId, isLockedAssets: isInLockedFolder });
     }
   };
 
@@ -161,11 +164,11 @@
 {#if dragStartTarget}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="fixed inset-0 z-[1000] flex h-full w-full flex-col items-center justify-center bg-gray-100/90 text-immich-dark-gray dark:bg-immich-dark-bg/90 dark:text-immich-gray"
+    class="fixed inset-0 flex h-full w-full flex-col items-center justify-center bg-gray-100/90 text-immich-dark-gray dark:bg-immich-dark-bg/90 dark:text-immich-gray"
     transition:fade={{ duration: 250 }}
     ondragover={onDragOver}
   >
-    <ImmichLogo noText class="m-16 w-48 animate-bounce" />
+    <ImmichLogo noText class="m-16 h-48 animate-bounce" />
     <div class="text-2xl">{$t('drop_files_to_upload')}</div>
   </div>
 {/if}

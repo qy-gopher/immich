@@ -17,10 +17,8 @@ class ChangePasswordForm extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final passwordController =
-        useTextEditingController.fromValue(TextEditingValue.empty);
-    final confirmPasswordController =
-        useTextEditingController.fromValue(TextEditingValue.empty);
+    final passwordController = useTextEditingController.fromValue(TextEditingValue.empty);
+    final confirmPasswordController = useTextEditingController.fromValue(TextEditingValue.empty);
     final authState = ref.watch(authProvider);
     final formKey = GlobalKey<FormState>();
 
@@ -34,7 +32,7 @@ class ChangePasswordForm extends HookConsumerWidget {
             alignment: WrapAlignment.start,
             children: [
               Text(
-                'common_change_password'.tr(),
+                'change_password'.tr(),
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -72,20 +70,15 @@ class ChangePasswordForm extends HookConsumerWidget {
                       passwordController: passwordController,
                       onPressed: () async {
                         if (formKey.currentState!.validate()) {
-                          var isSuccess = await ref
-                              .read(authProvider.notifier)
-                              .changePassword(passwordController.value.text);
+                          var isSuccess =
+                              await ref.read(authProvider.notifier).changePassword(passwordController.value.text);
 
                           if (isSuccess) {
                             await ref.read(authProvider.notifier).logout();
 
-                            ref
-                                .read(manualUploadProvider.notifier)
-                                .cancelBackup();
+                            ref.read(manualUploadProvider.notifier).cancelBackup();
                             ref.read(backupProvider.notifier).cancelBackup();
-                            await ref
-                                .read(assetProvider.notifier)
-                                .clearAllAsset();
+                            await ref.read(assetProvider.notifier).clearAllAssets();
                             ref.read(websocketProvider.notifier).disconnect();
 
                             AutoRouter.of(context).back();
@@ -110,7 +103,7 @@ class ChangePasswordForm extends HookConsumerWidget {
                     TextButton.icon(
                       icon: const Icon(Icons.arrow_back),
                       onPressed: () => AutoRouter.of(context).back(),
-                      label: const Text('action_common_back').tr(),
+                      label: const Text('back').tr(),
                     ),
                   ],
                 ),
@@ -193,7 +186,7 @@ class ChangePasswordButton extends ConsumerWidget {
       ),
       onPressed: onPressed,
       child: Text(
-        'common_change_password'.tr(),
+        'change_password'.tr(),
         style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
       ),
     );

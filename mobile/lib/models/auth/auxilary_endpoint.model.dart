@@ -5,7 +5,7 @@ class AuxilaryEndpoint {
   final String url;
   final AuxCheckStatus status;
 
-  AuxilaryEndpoint({
+  const AuxilaryEndpoint({
     required this.url,
     required this.status,
   });
@@ -55,7 +55,7 @@ class AuxilaryEndpoint {
 
 class AuxCheckStatus {
   final String name;
-  AuxCheckStatus({
+  const AuxCheckStatus({
     required this.name,
   });
   const AuxCheckStatus._(this.name);
@@ -97,8 +97,7 @@ class AuxCheckStatus {
 
   String toJson() => json.encode(toMap());
 
-  factory AuxCheckStatus.fromJson(String source) =>
-      AuxCheckStatus.fromMap(json.decode(source) as Map<String, dynamic>);
+  factory AuxCheckStatus.fromJson(String source) => AuxCheckStatus.fromMap(json.decode(source) as Map<String, dynamic>);
 
   @override
   String toString() => 'AuxCheckStatus(name: $name)';

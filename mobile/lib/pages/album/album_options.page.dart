@@ -4,14 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:immich_mobile/domain/models/user.model.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/theme_extensions.dart';
+import 'package:immich_mobile/infrastructure/entities/user.entity.dart' as entity;
 import 'package:immich_mobile/providers/album/album.provider.dart';
 import 'package:immich_mobile/providers/album/current_album.provider.dart';
 import 'package:immich_mobile/providers/auth.provider.dart';
-import 'package:immich_mobile/utils/immich_loading_overlay.dart';
 import 'package:immich_mobile/routing/router.dart';
-import 'package:immich_mobile/entities/user.entity.dart';
+import 'package:immich_mobile/utils/immich_loading_overlay.dart';
 import 'package:immich_mobile/widgets/common/immich_toast.dart';
 import 'package:immich_mobile/widgets/common/user_circle_avatar.dart';
 
@@ -26,7 +27,7 @@ class AlbumOptionsPage extends HookConsumerWidget {
       return const SizedBox();
     }
 
-    final sharedUsers = useState(album.sharedUsers.toList());
+    final sharedUsers = useState(album.sharedUsers.map((u) => u.toDto()).toList());
     final owner = album.owner.value;
     final userId = ref.watch(authProvider).userId;
     final activityEnabled = useState(album.activityEnabled);
@@ -47,8 +48,7 @@ class AlbumOptionsPage extends HookConsumerWidget {
       isProcessing.value = true;
 
       try {
-        final isSuccess =
-            await ref.read(albumProvider.notifier).leaveAlbum(album);
+        final isSuccess = await ref.read(albumProvider.notifier).leaveAlbum(album);
 
         if (isSuccess) {
           context.navigateTo(
@@ -64,13 +64,13 @@ class AlbumOptionsPage extends HookConsumerWidget {
       isProcessing.value = false;
     }
 
-    void removeUserFromAlbum(User user) async {
+    void removeUserFromAlbum(UserDto user) async {
       isProcessing.value = true;
 
       try {
         await ref.read(albumProvider.notifier).removeUser(album, user);
-        album.sharedUsers.remove(user);
-        sharedUsers.value = album.sharedUsers.toList();
+        album.sharedUsers.remove(entity.User.fromDto(user));
+        sharedUsers.value = album.sharedUsers.map((u) => u.toDto()).toList();
       } catch (error) {
         showErrorMessage();
       }
@@ -79,7 +79,7 @@ class AlbumOptionsPage extends HookConsumerWidget {
       isProcessing.value = false;
     }
 
-    void handleUserClick(User user) {
+    void handleUserClick(UserDto user) {
       var actions = [];
 
       if (user.id == userId) {
@@ -96,8 +96,7 @@ class AlbumOptionsPage extends HookConsumerWidget {
         actions = [
           ListTile(
             leading: const Icon(Icons.person_remove_rounded),
-            title: const Text("shared_album_section_people_action_remove_user")
-                .tr(),
+            title: const Text("shared_album_section_people_action_remove_user").tr(),
             onTap: () => removeUserFromAlbum(user),
           ),
         ];
@@ -123,8 +122,7 @@ class AlbumOptionsPage extends HookConsumerWidget {
 
     buildOwnerInfo() {
       return ListTile(
-        leading:
-            owner != null ? UserCircleAvatar(user: owner) : const SizedBox(),
+        leading: owner != null ? UserCircleAvatar(user: owner.toDto()) : const SizedBox(),
         title: Text(
           album.owner.value?.name ?? "",
           style: const TextStyle(
@@ -136,7 +134,7 @@ class AlbumOptionsPage extends HookConsumerWidget {
           style: TextStyle(color: context.colorScheme.onSurfaceSecondary),
         ),
         trailing: Text(
-          "shared_album_section_people_owner_label",
+          "owner",
           style: context.textTheme.labelLarge,
         ).tr(),
       );
@@ -166,12 +164,8 @@ class AlbumOptionsPage extends HookConsumerWidget {
                 color: context.colorScheme.onSurfaceSecondary,
               ),
             ),
-            trailing: userId == user.id || isOwner
-                ? const Icon(Icons.more_horiz_rounded)
-                : const SizedBox(),
-            onTap: userId == user.id || isOwner
-                ? () => handleUserClick(user)
-                : null,
+            trailing: userId == user.id || isOwner ? const Icon(Icons.more_horiz_rounded) : const SizedBox(),
+            onTap: userId == user.id || isOwner ? () => handleUserClick(user) : null,
           );
         },
       );
@@ -191,7 +185,7 @@ class AlbumOptionsPage extends HookConsumerWidget {
           onPressed: () => context.maybePop(null),
         ),
         centerTitle: true,
-        title: Text("translated_text_options".tr()),
+        title: Text("options".tr()),
       ),
       body: ListView(
         children: [
@@ -200,23 +194,18 @@ class AlbumOptionsPage extends HookConsumerWidget {
               value: activityEnabled.value,
               onChanged: (bool value) async {
                 activityEnabled.value = value;
-                if (await ref
-                    .read(albumProvider.notifier)
-                    .setActivitystatus(album, value)) {
+                if (await ref.read(albumProvider.notifier).setActivitystatus(album, value)) {
                   album.activityEnabled = value;
                 }
               },
-              activeColor: activityEnabled.value
-                  ? context.primaryColor
-                  : context.themeData.disabledColor,
+              activeColor: activityEnabled.value ? context.primaryColor : context.themeData.disabledColor,
               dense: true,
               title: Text(
-                "shared_album_activity_setting_title",
-                style: context.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w500),
+                "comments_and_likes",
+                style: context.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500),
               ).tr(),
               subtitle: Text(
-                "shared_album_activity_setting_subtitle",
+                "let_others_respond",
                 style: context.textTheme.labelLarge?.copyWith(
                   color: context.colorScheme.onSurfaceSecondary,
                 ),

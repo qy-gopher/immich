@@ -7,9 +7,9 @@ import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/theme_extensions.dart';
 import 'package:immich_mobile/providers/theme.provider.dart';
 import 'package:immich_mobile/services/app_settings.service.dart';
-import 'package:immich_mobile/utils/hooks/app_settings_update_hook.dart';
 import 'package:immich_mobile/theme/color_scheme.dart';
 import 'package:immich_mobile/theme/dynamic_theme.dart';
+import 'package:immich_mobile/utils/hooks/app_settings_update_hook.dart';
 
 class PrimaryColorSetting extends HookConsumerWidget {
   const PrimaryColorSetting({
@@ -20,18 +20,15 @@ class PrimaryColorSetting extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeProvider = ref.read(immichThemeProvider);
 
-    final primaryColorSetting =
-        useAppSettingsState(AppSettingsEnum.primaryColor);
-    final systemPrimaryColorSetting =
-        useAppSettingsState(AppSettingsEnum.dynamicTheme);
+    final primaryColorSetting = useAppSettingsState(AppSettingsEnum.primaryColor);
+    final systemPrimaryColorSetting = useAppSettingsState(AppSettingsEnum.dynamicTheme);
 
     final currentPreset = useValueNotifier(ref.read(immichThemePresetProvider));
     const tileSize = 55.0;
 
     useValueChanged(
       primaryColorSetting.value,
-      (_, __) => currentPreset.value = ImmichColorPreset.values
-          .firstWhere((e) => e.name == primaryColorSetting.value),
+      (_, __) => currentPreset.value = ImmichColorPreset.values.firstWhere((e) => e.name == primaryColorSetting.value),
     );
 
     void popBottomSheet() {
@@ -98,7 +95,7 @@ class PrimaryColorSetting extends HookConsumerWidget {
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: const BorderRadius.all(Radius.circular(100)),
-                    color: Colors.grey[900]?.withOpacity(.4),
+                    color: Colors.grey[900]?.withValues(alpha: .4),
                   ),
                   child: const Padding(
                     padding: EdgeInsets.all(3),
@@ -131,13 +128,12 @@ class PrimaryColorSetting extends HookConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               margin: const EdgeInsets.only(top: 10),
               child: SwitchListTile.adaptive(
-                contentPadding:
-                    const EdgeInsets.symmetric(vertical: 6, horizontal: 20),
+                contentPadding: const EdgeInsets.symmetric(vertical: 6, horizontal: 20),
                 dense: true,
                 activeColor: context.primaryColor,
                 tileColor: context.colorScheme.surfaceContainerHigh,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(15)),
                 ),
                 title: Text(
                   'theme_setting_system_primary_color_title'.tr(),
@@ -164,8 +160,7 @@ class PrimaryColorSetting extends HookConsumerWidget {
                     topColor: theme.light.primary,
                     bottomColor: theme.dark.primary,
                     tileSize: tileSize,
-                    showSelector: currentPreset.value == preset &&
-                        !systemPrimaryColorSetting.value,
+                    showSelector: currentPreset.value == preset && !systemPrimaryColorSetting.value,
                   ),
                 );
               }).toList(),
@@ -201,8 +196,7 @@ class PrimaryColorSetting extends HookConsumerWidget {
                 ),
                 Text(
                   "theme_setting_primary_color_subtitle".tr(),
-                  style: context.textTheme.bodyMedium
-                      ?.copyWith(color: context.colorScheme.onSurfaceSecondary),
+                  style: context.textTheme.bodyMedium?.copyWith(color: context.colorScheme.onSurfaceSecondary),
                 ),
               ],
             ),

@@ -10,7 +10,6 @@ import 'package:immich_mobile/services/app_settings.service.dart';
 import 'package:immich_mobile/utils/hooks/app_settings_update_hook.dart';
 import 'package:immich_mobile/widgets/backup/album_info_card.dart';
 import 'package:immich_mobile/widgets/backup/album_info_list_tile.dart';
-import 'package:immich_mobile/widgets/common/immich_loading_indicator.dart';
 import 'package:immich_mobile/widgets/settings/settings_switch_list_tile.dart';
 
 @RoutePage()
@@ -20,8 +19,7 @@ class BackupAlbumSelectionPage extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedBackupAlbums = ref.watch(backupProvider).selectedBackupAlbums;
     final excludedBackupAlbums = ref.watch(backupProvider).excludedBackupAlbums;
-    final enableSyncUploadAlbum =
-        useAppSettingsState(AppSettingsEnum.syncAlbums);
+    final enableSyncUploadAlbum = useAppSettingsState(AppSettingsEnum.syncAlbums);
     final isDarkTheme = context.isDarkTheme;
     final albums = ref.watch(backupProvider).availableAlbums;
 
@@ -37,7 +35,7 @@ class BackupAlbumSelectionPage extends HookConsumerWidget {
       if (albums.isEmpty) {
         return const SliverToBoxAdapter(
           child: Center(
-            child: ImmichLoadingIndicator(),
+            child: CircularProgressIndicator(),
           ),
         );
       }
@@ -61,7 +59,7 @@ class BackupAlbumSelectionPage extends HookConsumerWidget {
       if (albums.isEmpty) {
         return const SliverToBoxAdapter(
           child: Center(
-            child: ImmichLoadingIndicator(),
+            child: CircularProgressIndicator(),
           ),
         );
       }
@@ -86,8 +84,7 @@ class BackupAlbumSelectionPage extends HookConsumerWidget {
 
     buildSelectedAlbumNameChip() {
       return selectedBackupAlbums.map((album) {
-        void removeSelection() =>
-            ref.read(backupProvider.notifier).removeAlbumForBackup(album);
+        void removeSelection() => ref.read(backupProvider.notifier).removeAlbumForBackup(album);
 
         return Padding(
           padding: const EdgeInsets.only(right: 8.0),
@@ -118,9 +115,7 @@ class BackupAlbumSelectionPage extends HookConsumerWidget {
     buildExcludedAlbumNameChip() {
       return excludedBackupAlbums.map((album) {
         void removeSelection() {
-          ref
-              .watch(backupProvider.notifier)
-              .removeExcludedAlbumForBackup(album);
+          ref.watch(backupProvider.notifier).removeExcludedAlbumForBackup(album);
         }
 
         return GestureDetector(
@@ -215,13 +210,9 @@ class BackupAlbumSelectionPage extends HookConsumerWidget {
                 ListTile(
                   title: Text(
                     "backup_album_selection_page_albums_device".tr(
-                      args: [
-                        ref
-                            .watch(backupProvider)
-                            .availableAlbums
-                            .length
-                            .toString(),
-                      ],
+                      namedArgs: {
+                        'count': ref.watch(backupProvider).availableAlbums.length.toString(),
+                      },
                     ),
                     style: context.textTheme.titleSmall,
                   ),
@@ -247,8 +238,10 @@ class BackupAlbumSelectionPage extends HookConsumerWidget {
                         context: context,
                         builder: (BuildContext context) {
                           return AlertDialog(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.all(
+                                Radius.circular(10),
+                              ),
                             ),
                             elevation: 5,
                             title: Text(

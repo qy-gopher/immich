@@ -1,5 +1,3 @@
-// ignore_for_file: prefer-single-widget-per-file
-
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
@@ -10,8 +8,8 @@ class DeleteDialog extends ConfirmDialog {
       : super(
           title: "delete_dialog_title",
           content: alert ?? "delete_dialog_alert",
-          cancel: "delete_dialog_cancel",
-          ok: "delete_dialog_ok",
+          cancel: "cancel",
+          ok: "delete",
           onOk: onDelete,
         );
 }
@@ -46,7 +44,7 @@ class DeleteLocalOnlyDialog extends StatelessWidget {
         TextButton(
           onPressed: () => context.pop(),
           child: Text(
-            "delete_dialog_cancel",
+            "cancel",
             style: TextStyle(
               color: context.primaryColor,
               fontWeight: FontWeight.bold,

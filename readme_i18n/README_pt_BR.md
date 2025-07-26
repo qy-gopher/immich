@@ -30,6 +30,7 @@
 <a href="README_nl_NL.md">Nederlands</a>
 <a href="README_tr_TR.md">Türkçe</a>
 <a href="README_zh_CN.md">中文</a>
+<a href="README_uk_UA.md">Українська</a>
 <a href="README_ru_RU.md">Русский</a>
 <a href="README_sv_SE.md">Svenska</a>
 <a href="README_ar_JO.md">العربية</a>
@@ -65,12 +66,8 @@
 
 ## Demonstração
 
-Acesse a demonstração [aqui](https://demo.immich.app). A demonstração está
-hospedada no Nível Gratuito da Oracle VM em Amsterdam com um processador 2.4Ghz
-quad-core ARM64 e 24GB de RAM.
-
-No aplicativo para dispositivos móveis, você pode usar
-`https://demo.immich.app/api` no campo `Server Endpoint URL`
+Acesse a demonstração [aqui](https://demo.immich.app). No aplicativo para dispositivos móveis, você pode usar
+`https://demo.immich.app` no campo `Server Endpoint URL`
 
 ### Credenciais de login
 

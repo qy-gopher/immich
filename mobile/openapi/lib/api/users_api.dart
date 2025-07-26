@@ -22,7 +22,7 @@ class UsersApi {
   /// * [MultipartFile] file (required):
   Future<Response> createProfileImageWithHttpInfo(MultipartFile file,) async {
     // ignore: prefer_const_declarations
-    final path = r'/users/profile-image';
+    final apiPath = r'/users/profile-image';
 
     // ignore: prefer_final_locals
     Object? postBody;
@@ -34,7 +34,7 @@ class UsersApi {
     const contentTypes = <String>['multipart/form-data'];
 
     bool hasFields = false;
-    final mp = MultipartRequest('POST', Uri.parse(path));
+    final mp = MultipartRequest('POST', Uri.parse(apiPath));
     if (file != null) {
       hasFields = true;
       mp.fields[r'file'] = file.field;
@@ -45,7 +45,7 @@ class UsersApi {
     }
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'POST',
       queryParams,
       postBody,
@@ -76,7 +76,7 @@ class UsersApi {
   /// Performs an HTTP 'DELETE /users/profile-image' operation and returns the [Response].
   Future<Response> deleteProfileImageWithHttpInfo() async {
     // ignore: prefer_const_declarations
-    final path = r'/users/profile-image';
+    final apiPath = r'/users/profile-image';
 
     // ignore: prefer_final_locals
     Object? postBody;
@@ -89,7 +89,7 @@ class UsersApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'DELETE',
       queryParams,
       postBody,
@@ -109,7 +109,7 @@ class UsersApi {
   /// Performs an HTTP 'DELETE /users/me/license' operation and returns the [Response].
   Future<Response> deleteUserLicenseWithHttpInfo() async {
     // ignore: prefer_const_declarations
-    final path = r'/users/me/license';
+    final apiPath = r'/users/me/license';
 
     // ignore: prefer_final_locals
     Object? postBody;
@@ -122,7 +122,7 @@ class UsersApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'DELETE',
       queryParams,
       postBody,
@@ -139,10 +139,10 @@ class UsersApi {
     }
   }
 
-  /// Performs an HTTP 'GET /users/me/preferences' operation and returns the [Response].
-  Future<Response> getMyPreferencesWithHttpInfo() async {
+  /// Performs an HTTP 'DELETE /users/me/onboarding' operation and returns the [Response].
+  Future<Response> deleteUserOnboardingWithHttpInfo() async {
     // ignore: prefer_const_declarations
-    final path = r'/users/me/preferences';
+    final apiPath = r'/users/me/onboarding';
 
     // ignore: prefer_final_locals
     Object? postBody;
@@ -155,7 +155,40 @@ class UsersApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
+      'DELETE',
+      queryParams,
+      postBody,
+      headerParams,
+      formParams,
+      contentTypes.isEmpty ? null : contentTypes.first,
+    );
+  }
+
+  Future<void> deleteUserOnboarding() async {
+    final response = await deleteUserOnboardingWithHttpInfo();
+    if (response.statusCode >= HttpStatus.badRequest) {
+      throw ApiException(response.statusCode, await _decodeBodyBytes(response));
+    }
+  }
+
+  /// Performs an HTTP 'GET /users/me/preferences' operation and returns the [Response].
+  Future<Response> getMyPreferencesWithHttpInfo() async {
+    // ignore: prefer_const_declarations
+    final apiPath = r'/users/me/preferences';
+
+    // ignore: prefer_final_locals
+    Object? postBody;
+
+    final queryParams = <QueryParam>[];
+    final headerParams = <String, String>{};
+    final formParams = <String, String>{};
+
+    const contentTypes = <String>[];
+
+
+    return apiClient.invokeAPI(
+      apiPath,
       'GET',
       queryParams,
       postBody,
@@ -183,7 +216,7 @@ class UsersApi {
   /// Performs an HTTP 'GET /users/me' operation and returns the [Response].
   Future<Response> getMyUserWithHttpInfo() async {
     // ignore: prefer_const_declarations
-    final path = r'/users/me';
+    final apiPath = r'/users/me';
 
     // ignore: prefer_final_locals
     Object? postBody;
@@ -196,7 +229,7 @@ class UsersApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'GET',
       queryParams,
       postBody,
@@ -227,7 +260,7 @@ class UsersApi {
   /// * [String] id (required):
   Future<Response> getProfileImageWithHttpInfo(String id,) async {
     // ignore: prefer_const_declarations
-    final path = r'/users/{id}/profile-image'
+    final apiPath = r'/users/{id}/profile-image'
       .replaceAll('{id}', id);
 
     // ignore: prefer_final_locals
@@ -241,7 +274,7 @@ class UsersApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'GET',
       queryParams,
       postBody,
@@ -275,7 +308,7 @@ class UsersApi {
   /// * [String] id (required):
   Future<Response> getUserWithHttpInfo(String id,) async {
     // ignore: prefer_const_declarations
-    final path = r'/users/{id}'
+    final apiPath = r'/users/{id}'
       .replaceAll('{id}', id);
 
     // ignore: prefer_final_locals
@@ -289,7 +322,7 @@ class UsersApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'GET',
       queryParams,
       postBody,
@@ -320,7 +353,7 @@ class UsersApi {
   /// Performs an HTTP 'GET /users/me/license' operation and returns the [Response].
   Future<Response> getUserLicenseWithHttpInfo() async {
     // ignore: prefer_const_declarations
-    final path = r'/users/me/license';
+    final apiPath = r'/users/me/license';
 
     // ignore: prefer_final_locals
     Object? postBody;
@@ -333,7 +366,7 @@ class UsersApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'GET',
       queryParams,
       postBody,
@@ -358,10 +391,10 @@ class UsersApi {
     return null;
   }
 
-  /// Performs an HTTP 'GET /users' operation and returns the [Response].
-  Future<Response> searchUsersWithHttpInfo() async {
+  /// Performs an HTTP 'GET /users/me/onboarding' operation and returns the [Response].
+  Future<Response> getUserOnboardingWithHttpInfo() async {
     // ignore: prefer_const_declarations
-    final path = r'/users';
+    final apiPath = r'/users/me/onboarding';
 
     // ignore: prefer_final_locals
     Object? postBody;
@@ -374,7 +407,48 @@ class UsersApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
+      'GET',
+      queryParams,
+      postBody,
+      headerParams,
+      formParams,
+      contentTypes.isEmpty ? null : contentTypes.first,
+    );
+  }
+
+  Future<OnboardingResponseDto?> getUserOnboarding() async {
+    final response = await getUserOnboardingWithHttpInfo();
+    if (response.statusCode >= HttpStatus.badRequest) {
+      throw ApiException(response.statusCode, await _decodeBodyBytes(response));
+    }
+    // When a remote server returns no body with a status of 204, we shall not decode it.
+    // At the time of writing this, `dart:convert` will throw an "Unexpected end of input"
+    // FormatException when trying to decode an empty string.
+    if (response.body.isNotEmpty && response.statusCode != HttpStatus.noContent) {
+      return await apiClient.deserializeAsync(await _decodeBodyBytes(response), 'OnboardingResponseDto',) as OnboardingResponseDto;
+    
+    }
+    return null;
+  }
+
+  /// Performs an HTTP 'GET /users' operation and returns the [Response].
+  Future<Response> searchUsersWithHttpInfo() async {
+    // ignore: prefer_const_declarations
+    final apiPath = r'/users';
+
+    // ignore: prefer_final_locals
+    Object? postBody;
+
+    final queryParams = <QueryParam>[];
+    final headerParams = <String, String>{};
+    final formParams = <String, String>{};
+
+    const contentTypes = <String>[];
+
+
+    return apiClient.invokeAPI(
+      apiPath,
       'GET',
       queryParams,
       postBody,
@@ -408,7 +482,7 @@ class UsersApi {
   /// * [LicenseKeyDto] licenseKeyDto (required):
   Future<Response> setUserLicenseWithHttpInfo(LicenseKeyDto licenseKeyDto,) async {
     // ignore: prefer_const_declarations
-    final path = r'/users/me/license';
+    final apiPath = r'/users/me/license';
 
     // ignore: prefer_final_locals
     Object? postBody = licenseKeyDto;
@@ -421,7 +495,7 @@ class UsersApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'PUT',
       queryParams,
       postBody,
@@ -449,13 +523,60 @@ class UsersApi {
     return null;
   }
 
+  /// Performs an HTTP 'PUT /users/me/onboarding' operation and returns the [Response].
+  /// Parameters:
+  ///
+  /// * [OnboardingDto] onboardingDto (required):
+  Future<Response> setUserOnboardingWithHttpInfo(OnboardingDto onboardingDto,) async {
+    // ignore: prefer_const_declarations
+    final apiPath = r'/users/me/onboarding';
+
+    // ignore: prefer_final_locals
+    Object? postBody = onboardingDto;
+
+    final queryParams = <QueryParam>[];
+    final headerParams = <String, String>{};
+    final formParams = <String, String>{};
+
+    const contentTypes = <String>['application/json'];
+
+
+    return apiClient.invokeAPI(
+      apiPath,
+      'PUT',
+      queryParams,
+      postBody,
+      headerParams,
+      formParams,
+      contentTypes.isEmpty ? null : contentTypes.first,
+    );
+  }
+
+  /// Parameters:
+  ///
+  /// * [OnboardingDto] onboardingDto (required):
+  Future<OnboardingResponseDto?> setUserOnboarding(OnboardingDto onboardingDto,) async {
+    final response = await setUserOnboardingWithHttpInfo(onboardingDto,);
+    if (response.statusCode >= HttpStatus.badRequest) {
+      throw ApiException(response.statusCode, await _decodeBodyBytes(response));
+    }
+    // When a remote server returns no body with a status of 204, we shall not decode it.
+    // At the time of writing this, `dart:convert` will throw an "Unexpected end of input"
+    // FormatException when trying to decode an empty string.
+    if (response.body.isNotEmpty && response.statusCode != HttpStatus.noContent) {
+      return await apiClient.deserializeAsync(await _decodeBodyBytes(response), 'OnboardingResponseDto',) as OnboardingResponseDto;
+    
+    }
+    return null;
+  }
+
   /// Performs an HTTP 'PUT /users/me/preferences' operation and returns the [Response].
   /// Parameters:
   ///
   /// * [UserPreferencesUpdateDto] userPreferencesUpdateDto (required):
   Future<Response> updateMyPreferencesWithHttpInfo(UserPreferencesUpdateDto userPreferencesUpdateDto,) async {
     // ignore: prefer_const_declarations
-    final path = r'/users/me/preferences';
+    final apiPath = r'/users/me/preferences';
 
     // ignore: prefer_final_locals
     Object? postBody = userPreferencesUpdateDto;
@@ -468,7 +589,7 @@ class UsersApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'PUT',
       queryParams,
       postBody,
@@ -502,7 +623,7 @@ class UsersApi {
   /// * [UserUpdateMeDto] userUpdateMeDto (required):
   Future<Response> updateMyUserWithHttpInfo(UserUpdateMeDto userUpdateMeDto,) async {
     // ignore: prefer_const_declarations
-    final path = r'/users/me';
+    final apiPath = r'/users/me';
 
     // ignore: prefer_final_locals
     Object? postBody = userUpdateMeDto;
@@ -515,7 +636,7 @@ class UsersApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'PUT',
       queryParams,
       postBody,

@@ -4,19 +4,19 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Inject,
   Next,
   Param,
   ParseFilePipe,
   Post,
   Put,
   Query,
+  Req,
   Res,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiBody, ApiConsumes, ApiHeader, ApiTags } from '@nestjs/swagger';
-import { NextFunction, Response } from 'express';
+import { ApiBody, ApiConsumes, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { NextFunction, Request, Response } from 'express';
 import { EndpointLifecycle } from 'src/decorators';
 import {
   AssetBulkUploadCheckResponseDto,
@@ -29,24 +29,26 @@ import {
   AssetMediaCreateDto,
   AssetMediaOptionsDto,
   AssetMediaReplaceDto,
+  AssetMediaSize,
   CheckExistingAssetsDto,
   UploadFieldName,
 } from 'src/dtos/asset-media.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
-import { ImmichHeader, RouteKey } from 'src/enum';
-import { ILoggerRepository } from 'src/interfaces/logger.interface';
+import { ImmichHeader, Permission, RouteKey } from 'src/enum';
 import { AssetUploadInterceptor } from 'src/middleware/asset-upload.interceptor';
 import { Auth, Authenticated, FileResponse } from 'src/middleware/auth.guard';
-import { FileUploadInterceptor, UploadFiles, getFiles } from 'src/middleware/file-upload.interceptor';
+import { FileUploadInterceptor, getFiles } from 'src/middleware/file-upload.interceptor';
+import { LoggingRepository } from 'src/repositories/logging.repository';
 import { AssetMediaService } from 'src/services/asset-media.service';
-import { sendFile } from 'src/utils/file';
+import { UploadFiles } from 'src/types';
+import { ImmichFileResponse, sendFile } from 'src/utils/file';
 import { FileNotEmptyValidator, UUIDParamDto } from 'src/validation';
 
 @ApiTags('Assets')
-@Controller(RouteKey.ASSET)
+@Controller(RouteKey.Asset)
 export class AssetMediaController {
   constructor(
-    @Inject(ILoggerRepository) private logger: ILoggerRepository,
+    private logger: LoggingRepository,
     private service: AssetMediaService,
   ) {}
 
@@ -54,12 +56,12 @@ export class AssetMediaController {
   @UseInterceptors(AssetUploadInterceptor, FileUploadInterceptor)
   @ApiConsumes('multipart/form-data')
   @ApiHeader({
-    name: ImmichHeader.CHECKSUM,
+    name: ImmichHeader.Checksum,
     description: 'sha1 checksum that can be used for duplicate detection before the file is uploaded',
     required: false,
   })
   @ApiBody({ description: 'Asset Upload Information', type: AssetMediaCreateDto })
-  @Authenticated({ sharedLink: true })
+  @Authenticated({ permission: Permission.AssetUpload, sharedLink: true })
   async uploadAsset(
     @Auth() auth: AuthDto,
     @UploadedFiles(new ParseFilePipe({ validators: [new FileNotEmptyValidator(['assetData'])] })) files: UploadFiles,
@@ -78,7 +80,7 @@ export class AssetMediaController {
 
   @Get(':id/original')
   @FileResponse()
-  @Authenticated({ sharedLink: true })
+  @Authenticated({ permission: Permission.AssetDownload, sharedLink: true })
   async downloadAsset(
     @Auth() auth: AuthDto,
     @Param() { id }: UUIDParamDto,
@@ -95,7 +97,11 @@ export class AssetMediaController {
   @UseInterceptors(FileUploadInterceptor)
   @ApiConsumes('multipart/form-data')
   @EndpointLifecycle({ addedAt: 'v1.106.0' })
-  @Authenticated({ sharedLink: true })
+  @ApiOperation({
+    summary: 'replaceAsset',
+    description: 'Replace the asset with new file, without changing its id',
+  })
+  @Authenticated({ permission: Permission.AssetReplace, sharedLink: true })
   async replaceAsset(
     @Auth() auth: AuthDto,
     @Param() { id }: UUIDParamDto,
@@ -114,20 +120,44 @@ export class AssetMediaController {
 
   @Get(':id/thumbnail')
   @FileResponse()
-  @Authenticated({ sharedLink: true })
+  @Authenticated({ permission: Permission.AssetView, sharedLink: true })
   async viewAsset(
     @Auth() auth: AuthDto,
     @Param() { id }: UUIDParamDto,
     @Query() dto: AssetMediaOptionsDto,
+    @Req() req: Request,
     @Res() res: Response,
     @Next() next: NextFunction,
   ) {
-    await sendFile(res, next, () => this.service.viewThumbnail(auth, id, dto), this.logger);
+    const viewThumbnailRes = await this.service.viewThumbnail(auth, id, dto);
+
+    if (viewThumbnailRes instanceof ImmichFileResponse) {
+      await sendFile(res, next, () => Promise.resolve(viewThumbnailRes), this.logger);
+    } else {
+      // viewThumbnailRes is a AssetMediaRedirectResponse
+      // which redirects to the original asset or a specific size to make better use of caching
+      const { targetSize } = viewThumbnailRes;
+      const [reqPath, reqSearch] = req.url.split('?');
+      let redirPath: string;
+      const redirSearchParams = new URLSearchParams(reqSearch);
+      if (targetSize === 'original') {
+        // relative path to this.downloadAsset
+        redirPath = 'original';
+        redirSearchParams.delete('size');
+      } else if (Object.values(AssetMediaSize).includes(targetSize)) {
+        redirPath = reqPath;
+        redirSearchParams.set('size', targetSize);
+      } else {
+        throw new Error('Invalid targetSize: ' + targetSize);
+      }
+      const finalRedirPath = redirPath + '?' + redirSearchParams.toString();
+      return res.redirect(finalRedirPath);
+    }
   }
 
   @Get(':id/video/playback')
   @FileResponse()
-  @Authenticated({ sharedLink: true })
+  @Authenticated({ permission: Permission.AssetView, sharedLink: true })
   async playAssetVideo(
     @Auth() auth: AuthDto,
     @Param() { id }: UUIDParamDto,
@@ -142,6 +172,10 @@ export class AssetMediaController {
    */
   @Post('exist')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'checkExistingAssets',
+    description: 'Checks if multiple assets exist on the server and returns all existing - used by background backup',
+  })
   @Authenticated()
   checkExistingAssets(
     @Auth() auth: AuthDto,
@@ -155,6 +189,10 @@ export class AssetMediaController {
    */
   @Post('bulk-upload-check')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'checkBulkUpload',
+    description: 'Checks if assets exist by checksums',
+  })
   @Authenticated()
   checkBulkUpload(
     @Auth() auth: AuthDto,

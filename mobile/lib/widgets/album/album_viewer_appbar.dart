@@ -12,12 +12,12 @@ import 'package:immich_mobile/providers/album/current_album.provider.dart';
 import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/widgets/common/immich_toast.dart';
 
-class AlbumViewerAppbar extends HookConsumerWidget
-    implements PreferredSizeWidget {
+class AlbumViewerAppbar extends HookConsumerWidget implements PreferredSizeWidget {
   const AlbumViewerAppbar({
     super.key,
     required this.userId,
     required this.titleFocusNode,
+    required this.descriptionFocusNode,
     this.onAddPhotos,
     this.onAddUsers,
     required this.onActivities,
@@ -25,6 +25,7 @@ class AlbumViewerAppbar extends HookConsumerWidget
 
   final String userId;
   final FocusNode titleFocusNode;
+  final FocusNode descriptionFocusNode;
   final void Function()? onAddPhotos;
   final void Function()? onAddUsers;
   final void Function() onActivities;
@@ -48,22 +49,15 @@ class AlbumViewerAppbar extends HookConsumerWidget
 
     final albumViewer = ref.watch(albumViewerProvider);
     final newAlbumTitle = albumViewer.editTitleText;
+    final newAlbumDescription = albumViewer.editDescriptionText;
     final isEditAlbum = albumViewer.isEditAlbum;
 
-    final comments = album.shared
-        ? ref.watch(activityStatisticsProvider(album.remoteId!))
-        : 0;
+    final comments = album.shared ? ref.watch(activityStatisticsProvider(album.remoteId!)) : 0;
 
     deleteAlbum() async {
-      final bool success =
-          await ref.watch(albumProvider.notifier).deleteAlbum(album);
+      final bool success = await ref.watch(albumProvider.notifier).deleteAlbum(album);
 
-      if (album.shared) {
-        context.navigateTo(const TabControllerRoute(children: [AlbumsRoute()]));
-      } else {
-        context
-            .navigateTo(const TabControllerRoute(children: [LibraryRoute()]));
-      }
+      context.navigateTo(const TabControllerRoute(children: [AlbumsRoute()]));
 
       if (!success) {
         ImmichToast.show(
@@ -81,13 +75,13 @@ class AlbumViewerAppbar extends HookConsumerWidget
         barrierDismissible: false, // user must tap button!
         builder: (BuildContext context) {
           return AlertDialog(
-            title: const Text('album_viewer_appbar_share_delete').tr(),
+            title: const Text('delete_album').tr(),
             content: const Text('album_viewer_appbar_delete_confirm').tr(),
             actions: <Widget>[
               TextButton(
                 onPressed: () => context.pop('Cancel'),
                 child: Text(
-                  'action_common_cancel',
+                  'cancel',
                   style: TextStyle(
                     color: context.primaryColor,
                     fontWeight: FontWeight.bold,
@@ -100,7 +94,7 @@ class AlbumViewerAppbar extends HookConsumerWidget
                   deleteAlbum();
                 },
                 child: Text(
-                  'action_common_confirm',
+                  'confirm',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: context.colorScheme.error,
@@ -114,8 +108,7 @@ class AlbumViewerAppbar extends HookConsumerWidget
     }
 
     void onLeaveAlbumPressed() async {
-      bool isSuccess =
-          await ref.watch(albumProvider.notifier).leaveAlbum(album);
+      bool isSuccess = await ref.watch(albumProvider.notifier).leaveAlbum(album);
 
       if (isSuccess) {
         context.navigateTo(const TabControllerRoute(children: [AlbumsRoute()]));
@@ -136,7 +129,7 @@ class AlbumViewerAppbar extends HookConsumerWidget
             ? ListTile(
                 leading: const Icon(Icons.delete_forever_rounded),
                 title: const Text(
-                  'album_viewer_appbar_share_delete',
+                  'delete_album',
                   style: TextStyle(fontWeight: FontWeight.w500),
                 ).tr(),
                 onTap: onDeleteAlbumPressed,
@@ -154,8 +147,7 @@ class AlbumViewerAppbar extends HookConsumerWidget
     }
 
     void onSortOrderToggled() async {
-      final updatedAlbum =
-          await ref.read(albumProvider.notifier).toggleSortOrder(album);
+      final updatedAlbum = await ref.read(albumProvider.notifier).toggleSortOrder(album);
 
       if (updatedAlbum == null) {
         ImmichToast.show(
@@ -194,21 +186,21 @@ class AlbumViewerAppbar extends HookConsumerWidget
           ).tr(),
         ),
         ListTile(
-          leading: const Icon(Icons.share_rounded),
+          leading: const Icon(Icons.link_rounded),
           onTap: () {
             context.pushRoute(SharedLinkEditRoute(albumId: album.remoteId));
             context.pop();
           },
           title: const Text(
-            "control_bottom_app_bar_share",
+            "control_bottom_app_bar_share_link",
             style: TextStyle(fontWeight: FontWeight.w500),
           ).tr(),
         ),
         ListTile(
           leading: const Icon(Icons.settings_rounded),
-          onTap: () => context.navigateTo(AlbumOptionsRoute()),
+          onTap: () => context.navigateTo(const AlbumOptionsRoute()),
           title: const Text(
-            "translated_text_options",
+            "options",
             style: TextStyle(fontWeight: FontWeight.w500),
           ).tr(),
         ),
@@ -225,7 +217,7 @@ class AlbumViewerAppbar extends HookConsumerWidget
             }
           },
           title: const Text(
-            "share_add_photos",
+            "add_photos",
             style: TextStyle(fontWeight: FontWeight.w500),
           ).tr(),
         ),
@@ -243,8 +235,7 @@ class AlbumViewerAppbar extends HookConsumerWidget
                 children: [
                   ...buildBottomSheetActions(),
                   if (onAddPhotos != null) ...commonActions,
-                  if (onAddPhotos != null && userId == album.ownerId)
-                    ...ownerActions,
+                  if (onAddPhotos != null && userId == album.ownerId) ...ownerActions,
                 ],
               ),
             ),
@@ -282,20 +273,34 @@ class AlbumViewerAppbar extends HookConsumerWidget
       if (isEditAlbum) {
         return IconButton(
           onPressed: () async {
-            bool isSuccess = await ref
-                .watch(albumViewerProvider.notifier)
-                .changeAlbumTitle(album, newAlbumTitle);
-
-            if (!isSuccess) {
-              ImmichToast.show(
-                context: context,
-                msg: "album_viewer_appbar_share_err_title".tr(),
-                gravity: ToastGravity.BOTTOM,
-                toastType: ToastType.error,
-              );
+            if (newAlbumTitle.isNotEmpty) {
+              bool isSuccess = await ref.watch(albumViewerProvider.notifier).changeAlbumTitle(album, newAlbumTitle);
+              if (!isSuccess) {
+                ImmichToast.show(
+                  context: context,
+                  msg: "album_viewer_appbar_share_err_title".tr(),
+                  gravity: ToastGravity.BOTTOM,
+                  toastType: ToastType.error,
+                );
+              }
+              titleFocusNode.unfocus();
+            } else if (newAlbumDescription.isNotEmpty) {
+              bool isSuccessDescription =
+                  await ref.watch(albumViewerProvider.notifier).changeAlbumDescription(album, newAlbumDescription);
+              if (!isSuccessDescription) {
+                ImmichToast.show(
+                  context: context,
+                  msg: "album_viewer_appbar_share_err_description".tr(),
+                  gravity: ToastGravity.BOTTOM,
+                  toastType: ToastType.error,
+                );
+              }
+              descriptionFocusNode.unfocus();
+            } else {
+              titleFocusNode.unfocus();
+              descriptionFocusNode.unfocus();
+              ref.read(albumViewerProvider.notifier).disableEditAlbum();
             }
-
-            titleFocusNode.unfocus();
           },
           icon: const Icon(Icons.check_rounded),
           splashRadius: 25,
@@ -311,11 +316,11 @@ class AlbumViewerAppbar extends HookConsumerWidget
 
     return AppBar(
       elevation: 0,
+      backgroundColor: context.scaffoldBackgroundColor,
       leading: buildLeadingButton(),
       centerTitle: false,
       actions: [
-        if (album.shared && (album.activityEnabled || comments != 0))
-          buildActivitiesButton(),
+        if (album.shared && (album.activityEnabled || comments != 0)) buildActivitiesButton(),
         if (album.isRemote) ...[
           IconButton(
             splashRadius: 25,

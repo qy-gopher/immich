@@ -28,6 +28,7 @@
   <a href="README_de_DE.md">Deutsch</a>
   <a href="README_tr_TR.md">Türkçe</a>
   <a href="README_zh_CN.md">中文</a>
+  <a href="README_uk_UA.md">Українська</a>
   <a href="README_ru_RU.md">Русский</a>
   <a href="README_pt_BR.md">Português Brasileiro</a>
   <a href="README_sv_SE.md">Svenska</a>
@@ -58,9 +59,7 @@ De belangrijkste documentatie, inclusief installatie handleidingen, zijn te vind
 
 ## Demo
 
-Je kunt de demo [hier](https://demo.immich.app/) bekijken. De demo server is actief op een Free-tier Oracle VM in Amsterdam met een 2.4GHz quad-core ARM64 CPU en 24GB RAM.
-
-Voor de mobiele app kun je gebruik maken van `https://demo.immich.app/api` voor de `Server Endpoint URL`
+Je kunt de demo [hier](https://demo.immich.app/) bekijken. Voor de mobiele app kun je gebruik maken van `https://demo.immich.app` voor de `Server Endpoint URL`.
 
 ### Login gegevens
 

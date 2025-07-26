@@ -1,13 +1,20 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_udid/flutter_udid.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:immich_mobile/constants/constants.dart';
+import 'package:immich_mobile/domain/models/store.model.dart';
+import 'package:immich_mobile/domain/models/user.model.dart';
+import 'package:immich_mobile/domain/services/user.service.dart';
 import 'package:immich_mobile/entities/store.entity.dart';
-import 'package:immich_mobile/models/auth/login_response.model.dart';
 import 'package:immich_mobile/models/auth/auth_state.model.dart';
-import 'package:immich_mobile/entities/user.entity.dart';
+import 'package:immich_mobile/models/auth/login_response.model.dart';
 import 'package:immich_mobile/providers/api.provider.dart';
+import 'package:immich_mobile/providers/infrastructure/user.provider.dart';
 import 'package:immich_mobile/services/api.service.dart';
 import 'package:immich_mobile/services/auth.service.dart';
+import 'package:immich_mobile/services/secure_storage.service.dart';
+import 'package:immich_mobile/services/upload.service.dart';
+import 'package:immich_mobile/services/widget.service.dart';
 import 'package:immich_mobile/utils/hash.dart';
 import 'package:logging/logging.dart';
 import 'package:openapi/api.dart';
@@ -16,12 +23,20 @@ final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   return AuthNotifier(
     ref.watch(authServiceProvider),
     ref.watch(apiServiceProvider),
+    ref.watch(userServiceProvider),
+    ref.watch(uploadServiceProvider),
+    ref.watch(secureStorageServiceProvider),
+    ref.watch(widgetServiceProvider),
   );
 });
 
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthService _authService;
   final ApiService _apiService;
+  final UserService _userService;
+  final UploadService _uploadService;
+  final SecureStorageService _secureStorageService;
+  final WidgetService _widgetService;
   final _log = Logger("AuthenticationNotifier");
 
   static const Duration _timeoutDuration = Duration(seconds: 7);
@@ -29,8 +44,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
   AuthNotifier(
     this._authService,
     this._apiService,
+    this._userService,
+    this._uploadService,
+    this._secureStorageService,
+    this._widgetService,
   ) : super(
-          AuthState(
+          const AuthState(
             deviceId: "",
             userId: "",
             userEmail: "",
@@ -46,7 +65,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   /// Validating the url is the alternative connecting server url without
-  /// saving the infomation to the local database
+  /// saving the information to the local database
   Future<bool> validateAuxilaryServerUrl(String url) async {
     try {
       final validEndpoint = await _apiService.resolveEndpoint(url);
@@ -64,14 +83,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     try {
+      await _secureStorageService.delete(kSecuredPinCode);
+      await _widgetService.clearCredentials();
+
       await _authService.logout();
+      await _uploadService.cancelBackup();
     } finally {
       await _cleanUp();
     }
   }
 
   Future<void> _cleanUp() async {
-    state = AuthState(
+    state = const AuthState(
       deviceId: "",
       userId: "",
       userEmail: "",
@@ -98,23 +121,30 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<bool> saveAuthInfo({
     required String accessToken,
   }) async {
-    _apiService.setAccessToken(accessToken);
+    await _apiService.setAccessToken(accessToken);
+
+    await _widgetService.writeCredentials(
+      Store.get(StoreKey.serverEndpoint),
+      accessToken,
+    );
 
     // Get the deviceid from the store if it exists, otherwise generate a new one
-    String deviceId =
-        Store.tryGet(StoreKey.deviceId) ?? await FlutterUdid.consistentUdid;
+    String deviceId = Store.tryGet(StoreKey.deviceId) ?? await FlutterUdid.consistentUdid;
 
-    User? user = Store.tryGet(StoreKey.currentUser);
+    UserDto? user = _userService.tryGetMyUser();
 
-    UserAdminResponseDto? userResponse;
-    UserPreferencesResponseDto? userPreferences;
     try {
-      final responses = await Future.wait([
-        _apiService.usersApi.getMyUser().timeout(_timeoutDuration),
-        _apiService.usersApi.getMyPreferences().timeout(_timeoutDuration),
-      ]);
-      userResponse = responses[0] as UserAdminResponseDto;
-      userPreferences = responses[1] as UserPreferencesResponseDto;
+      final serverUser = await _userService.refreshMyUser().timeout(_timeoutDuration);
+      if (serverUser == null) {
+        _log.severe("Unable to get user information from the server.");
+      } else {
+        // If the user information is successfully retrieved, update the store
+        // Due to the flow of the code, this will always happen on first login
+        user = serverUser;
+        await Store.put(StoreKey.deviceId, deviceId);
+        await Store.put(StoreKey.deviceIdHash, fastHash(deviceId));
+        await Store.put(StoreKey.accessToken, accessToken);
+      }
     } on ApiException catch (error, stackTrace) {
       if (error.code == 401) {
         _log.severe("Unauthorized access, token likely expired. Logging out.");
@@ -138,22 +168,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
     }
 
-    // If the user information is successfully retrieved, update the store
-    // Due to the flow of the code, this will always happen on first login
-    if (userResponse != null) {
-      Store.put(StoreKey.deviceId, deviceId);
-      Store.put(StoreKey.deviceIdHash, fastHash(deviceId));
-      Store.put(
-        StoreKey.currentUser,
-        User.fromUserDto(userResponse, userPreferences),
-      );
-      Store.put(StoreKey.accessToken, accessToken);
-
-      user = User.fromUserDto(userResponse, userPreferences);
-    } else {
-      _log.severe("Unable to get user information from the server.");
-    }
-
     // If the user is null, the login was not successful
     // and we don't have a local copy of the user from a prior successful login
     if (user == null) {
@@ -161,24 +175,24 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
 
     state = state.copyWith(
-      isAuthenticated: true,
+      deviceId: deviceId,
       userId: user.id,
       userEmail: user.email,
+      isAuthenticated: true,
       name: user.name,
-      profileImagePath: user.profileImagePath,
       isAdmin: user.isAdmin,
-      deviceId: deviceId,
+      profileImagePath: user.profileImagePath,
     );
 
     return true;
   }
 
-  Future<void> saveWifiName(String wifiName) {
-    return Store.put(StoreKey.preferredWifiName, wifiName);
+  Future<void> saveWifiName(String wifiName) async {
+    await Store.put(StoreKey.preferredWifiName, wifiName);
   }
 
-  Future<void> saveLocalEndpoint(String url) {
-    return Store.put(StoreKey.localEndpoint, url);
+  Future<void> saveLocalEndpoint(String url) async {
+    await Store.put(StoreKey.localEndpoint, url);
   }
 
   String? getSavedWifiName() {
@@ -194,12 +208,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return Store.tryGet(StoreKey.serverEndpoint);
   }
 
-  /// Returns the current server URL (input by the user) from the store
-  String? getServerUrl() {
-    return Store.tryGet(StoreKey.serverUrl);
-  }
-
   Future<String?> setOpenApiServiceEndpoint() {
     return _authService.setOpenApiServiceEndpoint();
+  }
+
+  Future<bool> unlockPinCode(String pinCode) {
+    return _authService.unlockPinCode(pinCode);
+  }
+
+  Future<void> lockPinCode() {
+    return _authService.lockPinCode();
+  }
+
+  Future<void> setupPinCode(String pinCode) {
+    return _authService.setupPinCode(pinCode);
   }
 }

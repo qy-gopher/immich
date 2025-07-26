@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:immich_mobile/constants/enums.dart';
 import 'package:immich_mobile/entities/asset.entity.dart';
-import 'package:immich_mobile/entities/user.entity.dart';
+import 'package:immich_mobile/infrastructure/entities/user.entity.dart';
 import 'package:immich_mobile/utils/datetime_comparison.dart';
 import 'package:isar/isar.dart';
 // ignore: implementation_imports
@@ -19,6 +19,7 @@ class Album {
     required this.name,
     required this.createdAt,
     required this.modifiedAt,
+    this.description,
     this.startDate,
     this.endDate,
     this.lastModifiedAssetTimestamp,
@@ -34,6 +35,7 @@ class Album {
   @Index(unique: false, replace: false, type: IndexType.hash)
   String? localId;
   String name;
+  String? description;
   DateTime createdAt;
   DateTime modifiedAt;
   DateTime? startDate;
@@ -93,13 +95,11 @@ class Album {
   // accessible in an object freshly created (not loaded from DB)
 
   @ignore
-  Iterable<User> get remoteUsers => sharedUsers.isEmpty
-      ? (sharedUsers as IsarLinksCommon<User>).addedObjects
-      : sharedUsers;
+  Iterable<User> get remoteUsers =>
+      sharedUsers.isEmpty ? (sharedUsers as IsarLinksCommon<User>).addedObjects : sharedUsers;
 
   @ignore
-  Iterable<Asset> get remoteAssets =>
-      assets.isEmpty ? (assets as IsarLinksCommon<Asset>).addedObjects : assets;
+  Iterable<Asset> get remoteAssets => assets.isEmpty ? (assets as IsarLinksCommon<Asset>).addedObjects : assets;
 
   @override
   bool operator ==(other) {
@@ -108,6 +108,7 @@ class Album {
         remoteId == other.remoteId &&
         localId == other.localId &&
         name == other.name &&
+        description == other.description &&
         createdAt.isAtSameMomentAs(other.createdAt) &&
         modifiedAt.isAtSameMomentAs(other.modifiedAt) &&
         isAtSameMomentAs(startDate, other.startDate) &&
@@ -135,6 +136,7 @@ class Album {
       modifiedAt.hashCode ^
       startDate.hashCode ^
       endDate.hashCode ^
+      description.hashCode ^
       lastModifiedAssetTimestamp.hashCode ^
       shared.hashCode ^
       activityEnabled.hashCode ^
@@ -150,6 +152,7 @@ class Album {
       name: dto.albumName,
       createdAt: dto.createdAt,
       modifiedAt: dto.updatedAt,
+      description: dto.description,
       lastModifiedAssetTimestamp: dto.lastModifiedAssetTimestamp,
       shared: dto.shared,
       startDate: dto.startDate,
@@ -159,15 +162,11 @@ class Album {
     a.remoteAssetCount = dto.assetCount;
     a.owner.value = await db.users.getById(dto.ownerId);
     if (dto.order != null) {
-      a.sortOrder =
-          dto.order == AssetOrder.asc ? SortOrder.asc : SortOrder.desc;
+      a.sortOrder = dto.order == AssetOrder.asc ? SortOrder.asc : SortOrder.desc;
     }
 
     if (dto.albumThumbnailAssetId != null) {
-      a.thumbnail.value = await db.assets
-          .where()
-          .remoteIdEqualTo(dto.albumThumbnailAssetId)
-          .findFirst();
+      a.thumbnail.value = await db.assets.where().remoteIdEqualTo(dto.albumThumbnailAssetId).findFirst();
     }
     if (dto.albumUsers.isNotEmpty) {
       final users = await db.users.getAllById(
@@ -176,15 +175,14 @@ class Album {
       a.sharedUsers.addAll(users.cast());
     }
     if (dto.assets.isNotEmpty) {
-      final assets =
-          await db.assets.getAllByRemoteId(dto.assets.map((e) => e.id));
+      final assets = await db.assets.getAllByRemoteId(dto.assets.map((e) => e.id));
       a.assets.addAll(assets);
     }
     return a;
   }
 
   @override
-  String toString() => name;
+  String toString() => 'remoteId: $remoteId name: $name description: $description';
 }
 
 extension AssetsHelper on IsarCollection<Album> {

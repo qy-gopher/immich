@@ -42,6 +42,12 @@ docker run -it -v "$(pwd)":/import:ro -e IMMICH_INSTANCE_URL=https://your-immich
 
 Please modify the `IMMICH_INSTANCE_URL` and `IMMICH_API_KEY` environment variables as suitable. You can also use a Docker env file to store your sensitive API key.
 
+This `docker run` command will directly run the command `immich` inside the container. You can directly append the desired parameters (see under "usage") to the commandline like this:
+
+```bash
+docker run -it -v "$(pwd)":/import:ro -e IMMICH_INSTANCE_URL=https://your-immich-instance/api -e IMMICH_API_KEY=your-api-key ghcr.io/immich-app/immich-cli:latest upload -a -c 5 --recursive directory/
+```
+
 ## Usage
 
 <details>
@@ -84,19 +90,22 @@ Usage: immich upload [paths...] [options]
 Upload assets
 
 Arguments:
-paths                       One or more paths to assets to be uploaded
+  paths                       One or more paths to assets to be uploaded
 
 Options:
--r, --recursive             Recursive (default: false, env: IMMICH_RECURSIVE)
--i, --ignore [paths...]     Paths to ignore (default: [], env: IMMICH_IGNORE_PATHS)
--h, --skip-hash             Don't hash files before upload (default: false, env: IMMICH_SKIP_HASH)
--H, --include-hidden        Include hidden folders (default: false, env: IMMICH_INCLUDE_HIDDEN)
--a, --album                 Automatically create albums based on folder name (default: false, env: IMMICH_AUTO_CREATE_ALBUM)
--A, --album-name <name>     Add all assets to specified album (env: IMMICH_ALBUM_NAME)
--n, --dry-run               Don't perform any actions, just show what will be done (default: false, env: IMMICH_DRY_RUN)
--c, --concurrency <number>  Number of assets to upload at the same time (default: 4, env: IMMICH_UPLOAD_CONCURRENCY)
---delete                    Delete local assets after upload (env: IMMICH_DELETE_ASSETS)
---help                      display help for command
+  -r, --recursive             Recursive (default: false, env: IMMICH_RECURSIVE)
+  -i, --ignore <pattern>      Pattern to ignore (env: IMMICH_IGNORE_PATHS)
+  -h, --skip-hash             Don't hash files before upload (default: false, env: IMMICH_SKIP_HASH)
+  -H, --include-hidden        Include hidden folders (default: false, env: IMMICH_INCLUDE_HIDDEN)
+  -a, --album                 Automatically create albums based on folder name (default: false, env: IMMICH_AUTO_CREATE_ALBUM)
+  -A, --album-name <name>     Add all assets to specified album (env: IMMICH_ALBUM_NAME)
+  -n, --dry-run               Don't perform any actions, just show what will be done (default: false, env: IMMICH_DRY_RUN)
+  -c, --concurrency <number>  Number of assets to upload at the same time (default: 4, env: IMMICH_UPLOAD_CONCURRENCY)
+  -j, --json-output           Output detailed information in json format (default: false, env: IMMICH_JSON_OUTPUT)
+  --delete                    Delete local assets after upload (env: IMMICH_DELETE_ASSETS)
+  --no-progress               Hide progress bars (env: IMMICH_PROGRESS_BAR)
+  --watch                     Watch for changes and upload automatically (default: false, env: IMMICH_WATCH_CHANGES)
+  --help                      display help for command
 ```
 
 </details>
@@ -112,7 +121,7 @@ You begin by authenticating to your Immich server. For instance:
 immich login http://192.168.1.216:2283/api HFEJ38DNSDUEG
 ```
 
-This will store your credentials in a `auth.yml` file in the configuration directory which defaults to `~/.config/`. The directory can be set with the `-d` option or the environment variable `IMMICH_CONFIG_DIR`. Please keep the file secure, either by performing the logout command after you are done, or deleting it manually.
+This will store your credentials in a `auth.yml` file in the configuration directory which defaults to `~/.config/immich/`. The directory can be set with the `-d` option or the environment variable `IMMICH_CONFIG_DIR`. Please keep the file secure, either by performing the logout command after you are done, or deleting it manually.
 
 Once you are authenticated, you can upload assets to your Immich server.
 
@@ -164,6 +173,16 @@ By default, hidden files are skipped. If you want to include hidden files, use t
 
 ```bash
 immich upload --include-hidden --recursive directory/
+```
+
+You can use the `--json-output` option to get a json printed which includes
+three keys: `newFiles`, `duplicates` and `newAssets`. Due to some logging
+output you will need to strip the first three lines of output to get the json.
+For example to get a list of files that would be uploaded for further
+processing:
+
+```bash
+immich upload --dry-run . | tail -n +4 | jq .newFiles[]
 ```
 
 ### Obtain the API Key

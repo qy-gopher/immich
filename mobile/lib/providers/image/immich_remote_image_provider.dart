@@ -15,15 +15,14 @@ import 'package:immich_mobile/entities/store.entity.dart';
 import 'package:immich_mobile/utils/image_url_builder.dart';
 
 /// The remote image provider for full size remote images
-class ImmichRemoteImageProvider
-    extends ImageProvider<ImmichRemoteImageProvider> {
+class ImmichRemoteImageProvider extends ImageProvider<ImmichRemoteImageProvider> {
   /// The [Asset.remoteId] of the asset to fetch
   final String assetId;
 
   /// The image cache manager
   final CacheManager? cacheManager;
 
-  ImmichRemoteImageProvider({
+  const ImmichRemoteImageProvider({
     required this.assetId,
     this.cacheManager,
   });
@@ -57,12 +56,6 @@ class ImmichRemoteImageProvider
         AppSettingsEnum.loadOriginal.defaultValue,
       );
 
-  /// Whether to load the preview thumbnail first or not
-  bool get _loadPreview => Store.get(
-        AppSettingsEnum.loadPreview.storeKey,
-        AppSettingsEnum.loadPreview.defaultValue,
-      );
-
   // Streams in each stage of the image as we ask for it
   Stream<ui.Codec> _codec(
     ImmichRemoteImageProvider key,
@@ -70,21 +63,6 @@ class ImmichRemoteImageProvider
     ImageDecoderCallback decode,
     StreamController<ImageChunkEvent> chunkEvents,
   ) async* {
-    // Load a preview to the chunk events
-    if (_loadPreview) {
-      final preview = getThumbnailUrlForRemoteId(
-        key.assetId,
-        type: api.AssetMediaSize.thumbnail,
-      );
-
-      yield await ImageLoader.loadImageFromCache(
-        preview,
-        cache: cache,
-        decode: decode,
-        chunkEvents: chunkEvents,
-      );
-    }
-
     // Load the higher resolution version of the image
     final url = getThumbnailUrlForRemoteId(
       key.assetId,

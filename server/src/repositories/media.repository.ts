@@ -1,23 +1,23 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { exiftool } from 'exiftool-vendored';
+import { Injectable } from '@nestjs/common';
+import { ExifDateTime, exiftool, WriteTags } from 'exiftool-vendored';
 import ffmpeg, { FfprobeData } from 'fluent-ffmpeg';
 import { Duration } from 'luxon';
 import fs from 'node:fs/promises';
 import { Writable } from 'node:stream';
 import sharp from 'sharp';
 import { ORIENTATION_TO_SHARP_ROTATION } from 'src/constants';
-import { Colorspace, LogLevel } from 'src/enum';
-import { ILoggerRepository } from 'src/interfaces/logger.interface';
+import { Exif } from 'src/database';
+import { Colorspace, LogLevel, RawExtractedFormat } from 'src/enum';
+import { LoggingRepository } from 'src/repositories/logging.repository';
 import {
   DecodeToBufferOptions,
   GenerateThumbhashOptions,
   GenerateThumbnailOptions,
-  IMediaRepository,
   ImageDimensions,
   ProbeOptions,
   TranscodeCommand,
   VideoInfo,
-} from 'src/interfaces/media.interface';
+} from 'src/types';
 import { handlePromiseError } from 'src/utils/misc';
 
 const probe = (input: string, options: string[]): Promise<FfprobeData> =>
@@ -36,29 +36,92 @@ type ProgressEvent = {
   percent?: number;
 };
 
+export type ExtractResult = {
+  buffer: Buffer;
+  format: RawExtractedFormat;
+};
+
 @Injectable()
-export class MediaRepository implements IMediaRepository {
-  constructor(@Inject(ILoggerRepository) private logger: ILoggerRepository) {
+export class MediaRepository {
+  constructor(private logger: LoggingRepository) {
     this.logger.setContext(MediaRepository.name);
   }
 
-  async extract(input: string, output: string): Promise<boolean> {
+  /**
+   *
+   * @param input file path to the input image
+   * @returns ExtractResult if succeeded, or null if failed
+   */
+  async extract(input: string): Promise<ExtractResult | null> {
     try {
-      await exiftool.extractJpgFromRaw(input, output);
+      const buffer = await exiftool.extractBinaryTagToBuffer('JpgFromRaw2', input);
+      return { buffer, format: RawExtractedFormat.Jpeg };
     } catch (error: any) {
-      this.logger.debug('Could not extract JPEG from image, trying preview', error.message);
-      try {
-        await exiftool.extractPreview(input, output);
-      } catch (error: any) {
-        this.logger.debug('Could not extract preview from image', error.message);
-        return false;
-      }
+      this.logger.debug('Could not extract JpgFromRaw2 buffer from image, trying JPEG from RAW next', error.message);
     }
 
-    return true;
+    try {
+      const buffer = await exiftool.extractBinaryTagToBuffer('JpgFromRaw', input);
+      return { buffer, format: RawExtractedFormat.Jpeg };
+    } catch (error: any) {
+      this.logger.debug('Could not extract JPEG buffer from image, trying PreviewJXL next', error.message);
+    }
+
+    try {
+      const buffer = await exiftool.extractBinaryTagToBuffer('PreviewJXL', input);
+      return { buffer, format: RawExtractedFormat.Jxl };
+    } catch (error: any) {
+      this.logger.debug('Could not extract PreviewJXL buffer from image, trying PreviewImage next', error.message);
+    }
+
+    try {
+      const buffer = await exiftool.extractBinaryTagToBuffer('PreviewImage', input);
+      return { buffer, format: RawExtractedFormat.Jpeg };
+    } catch (error: any) {
+      this.logger.debug('Could not extract preview buffer from image', error.message);
+      return null;
+    }
   }
 
-  decodeImage(input: string, options: DecodeToBufferOptions) {
+  async writeExif(tags: Partial<Exif>, output: string): Promise<boolean> {
+    try {
+      const tagsToWrite: WriteTags = {
+        ExifImageWidth: tags.exifImageWidth,
+        ExifImageHeight: tags.exifImageHeight,
+        DateTimeOriginal: tags.dateTimeOriginal && ExifDateTime.fromMillis(tags.dateTimeOriginal.getTime()),
+        ModifyDate: tags.modifyDate && ExifDateTime.fromMillis(tags.modifyDate.getTime()),
+        TimeZone: tags.timeZone,
+        GPSLatitude: tags.latitude,
+        GPSLongitude: tags.longitude,
+        ProjectionType: tags.projectionType,
+        City: tags.city,
+        Country: tags.country,
+        Make: tags.make,
+        Model: tags.model,
+        LensModel: tags.lensModel,
+        Fnumber: tags.fNumber?.toFixed(1),
+        FocalLength: tags.focalLength?.toFixed(1),
+        ISO: tags.iso,
+        ExposureTime: tags.exposureTime,
+        ProfileDescription: tags.profileDescription,
+        ColorSpace: tags.colorspace,
+        Rating: tags.rating,
+        // specially convert Orientation to numeric Orientation# for exiftool
+        'Orientation#': tags.orientation ? Number(tags.orientation) : undefined,
+      };
+
+      await exiftool.write(output, tagsToWrite, {
+        ignoreMinorErrors: true,
+        writeArgs: ['-overwrite_original'],
+      });
+      return true;
+    } catch (error: any) {
+      this.logger.warn(`Could not write exif data to image: ${error.message}`);
+      return false;
+    }
+  }
+
+  decodeImage(input: string | Buffer, options: DecodeToBufferOptions) {
     return this.getImageDecodingPipeline(input, options).raw().toBuffer({ resolveWithObject: true });
   }
 
@@ -79,7 +142,7 @@ export class MediaRepository implements IMediaRepository {
       limitInputPixels: false,
       raw: options.raw,
     })
-      .pipelineColorspace(options.colorspace === Colorspace.SRGB ? 'srgb' : 'rgb16')
+      .pipelineColorspace(options.colorspace === Colorspace.Srgb ? 'srgb' : 'rgb16')
       .withIccProfile(options.colorspace);
 
     if (!options.raw) {
@@ -98,7 +161,10 @@ export class MediaRepository implements IMediaRepository {
       pipeline = pipeline.extract(options.crop);
     }
 
-    return pipeline.resize(options.size, options.size, { fit: 'outside', withoutEnlargement: true });
+    if (options.size !== undefined) {
+      pipeline = pipeline.resize(options.size, options.size, { fit: 'outside', withoutEnlargement: true });
+    }
+    return pipeline;
   }
 
   async generateThumbhash(input: string | Buffer, options: GenerateThumbhashOptions): Promise<Buffer> {
@@ -143,7 +209,7 @@ export class MediaRepository implements IMediaRepository {
           index: stream.index,
           codecType: stream.codec_type,
           codecName: stream.codec_name,
-          frameCount: this.parseInt(options?.countFrames ? stream.nb_read_packets : stream.nb_frames),
+          bitrate: this.parseInt(stream.bit_rate),
         })),
     };
   }
@@ -186,7 +252,7 @@ export class MediaRepository implements IMediaRepository {
     });
   }
 
-  async getImageDimensions(input: string): Promise<ImageDimensions> {
+  async getImageDimensions(input: string | Buffer): Promise<ImageDimensions> {
     const { width = 0, height = 0 } = await sharp(input).metadata();
     return { width, height };
   }
@@ -201,7 +267,7 @@ export class MediaRepository implements IMediaRepository {
 
     const { frameCount, percentInterval } = options.progress;
     const frameInterval = Math.ceil(frameCount / (100 / percentInterval));
-    if (this.logger.isLevelEnabled(LogLevel.DEBUG) && frameCount && frameInterval) {
+    if (this.logger.isLevelEnabled(LogLevel.Debug) && frameCount && frameInterval) {
       let lastProgressFrame: number = 0;
       ffmpegCall.on('progress', (progress: ProgressEvent) => {
         if (progress.frames - lastProgressFrame < frameInterval) {

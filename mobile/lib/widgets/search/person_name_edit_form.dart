@@ -9,7 +9,7 @@ class PersonNameEditFormResult {
   final bool success;
   final String updatedName;
 
-  PersonNameEditFormResult(this.success, this.updatedName);
+  const PersonNameEditFormResult(this.success, this.updatedName);
 }
 
 class PersonNameEditForm extends HookConsumerWidget {
@@ -29,15 +29,16 @@ class PersonNameEditForm extends HookConsumerWidget {
 
     return AlertDialog(
       title: const Text(
-        "search_page_person_add_name_dialog_title",
+        "add_a_name",
         style: TextStyle(fontWeight: FontWeight.bold),
       ).tr(),
       content: SingleChildScrollView(
         child: TextFormField(
           controller: controller,
+          textCapitalization: TextCapitalization.words,
           autofocus: true,
           decoration: InputDecoration(
-            hintText: 'search_page_person_add_name_dialog_hint'.tr(),
+            hintText: 'name'.tr(),
             border: const OutlineInputBorder(),
             errorText: isError.value ? 'Error occured' : null,
           ),
@@ -46,10 +47,10 @@ class PersonNameEditForm extends HookConsumerWidget {
       actions: [
         TextButton(
           onPressed: () => context.pop(
-            PersonNameEditFormResult(false, ''),
+            const PersonNameEditFormResult(false, ''),
           ),
           child: Text(
-            "search_page_person_add_name_dialog_cancel",
+            "cancel",
             style: TextStyle(
               color: Colors.red[300],
               fontWeight: FontWeight.bold,
@@ -68,7 +69,7 @@ class PersonNameEditForm extends HookConsumerWidget {
             }
           },
           child: Text(
-            "search_page_person_add_name_dialog_save",
+            "save",
             style: TextStyle(
               color: context.primaryColor,
               fontWeight: FontWeight.bold,

@@ -13,6 +13,7 @@ const resetEnv = () => {
     'IMMICH_WORKERS_EXCLUDE',
     'IMMICH_TRUSTED_PROXIES',
     'IMMICH_API_METRICS_PORT',
+    'IMMICH_MEDIA_LOCATION',
     'IMMICH_MICROSERVICES_METRICS_PORT',
     'IMMICH_TELEMETRY_INCLUDE',
     'IMMICH_TELEMETRY_EXCLUDE',
@@ -23,6 +24,7 @@ const resetEnv = () => {
     'DB_USERNAME',
     'DB_PASSWORD',
     'DB_DATABASE_NAME',
+    'DB_SSL_MODE',
     'DB_SKIP_MIGRATIONS',
     'DB_VECTOR_EXTENSION',
 
@@ -75,27 +77,54 @@ describe('getEnv', () => {
     });
   });
 
+  describe('IMMICH_MEDIA_LOCATION', () => {
+    it('should throw an error for relative paths', () => {
+      process.env.IMMICH_MEDIA_LOCATION = './relative/path';
+      expect(() => getEnv()).toThrowError('IMMICH_MEDIA_LOCATION must be an absolute path');
+    });
+  });
+
   describe('database', () => {
     it('should use defaults', () => {
       const { database } = getEnv();
       expect(database).toEqual({
-        config: expect.objectContaining({
-          type: 'postgres',
+        config: {
+          connectionType: 'parts',
           host: 'database',
           port: 5432,
           database: 'immich',
           username: 'postgres',
           password: 'postgres',
-        }),
+        },
         skipMigrations: false,
-        vectorExtension: 'vectors',
+        vectorExtension: undefined,
       });
+    });
+
+    it('should validate DB_SSL_MODE', () => {
+      process.env.DB_SSL_MODE = 'invalid';
+      expect(() => getEnv()).toThrowError('DB_SSL_MODE must be one of the following values:');
+    });
+
+    it('should accept a valid DB_SSL_MODE', () => {
+      process.env.DB_SSL_MODE = 'prefer';
+      const { database } = getEnv();
+      expect(database.config).toMatchObject(expect.objectContaining({ ssl: 'prefer' }));
     });
 
     it('should allow skipping migrations', () => {
       process.env.DB_SKIP_MIGRATIONS = 'true';
       const { database } = getEnv();
       expect(database).toMatchObject({ skipMigrations: true });
+    });
+
+    it('should use DB_URL', () => {
+      process.env.DB_URL = 'postgres://postgres1:postgres2@database1:54320/immich';
+      const { database } = getEnv();
+      expect(database.config).toMatchObject({
+        connectionType: 'url',
+        url: 'postgres://postgres1:postgres2@database1:54320/immich',
+      });
     });
   });
 
@@ -218,7 +247,7 @@ describe('getEnv', () => {
 
     it('should reject invalid trusted proxies', () => {
       process.env.IMMICH_TRUSTED_PROXIES = '10.1';
-      expect(() => getEnv()).toThrowError('Invalid environment variables: IMMICH_TRUSTED_PROXIES');
+      expect(() => getEnv()).toThrow('IMMICH_TRUSTED_PROXIES must be an ip address, or ip address range');
     });
   });
 
@@ -254,14 +283,14 @@ describe('getEnv', () => {
       process.env.IMMICH_TELEMETRY_EXCLUDE = 'job';
       const { telemetry } = getEnv();
       expect(telemetry.metrics).toEqual(
-        new Set([ImmichTelemetry.API, ImmichTelemetry.HOST, ImmichTelemetry.IO, ImmichTelemetry.REPO]),
+        new Set([ImmichTelemetry.Api, ImmichTelemetry.Host, ImmichTelemetry.Io, ImmichTelemetry.Repo]),
       );
     });
 
     it('should run with specific telemetry metrics', () => {
       process.env.IMMICH_TELEMETRY_INCLUDE = 'io, host, api';
       const { telemetry } = getEnv();
-      expect(telemetry.metrics).toEqual(new Set([ImmichTelemetry.API, ImmichTelemetry.HOST, ImmichTelemetry.IO]));
+      expect(telemetry.metrics).toEqual(new Set([ImmichTelemetry.Api, ImmichTelemetry.Host, ImmichTelemetry.Io]));
     });
   });
 });

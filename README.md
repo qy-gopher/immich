@@ -1,11 +1,11 @@
 <p align="center"> 
-  <br/>  
+  <br/>
   <a href="https://opensource.org/license/agpl-v3"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg?color=3F51B5&style=for-the-badge&label=License&logoColor=000000&labelColor=ececec" alt="License: AGPLv3"></a>
   <a href="https://discord.immich.app">
     <img src="https://img.shields.io/discord/979116623879368755.svg?label=Discord&logo=Discord&style=for-the-badge&logoColor=000000&labelColor=ececec" alt="Discord"/>
   </a>
-  <br/>  
-  <br/>   
+  <br/>
+  <br/>
 </p>
 
 <p align="center">
@@ -29,6 +29,7 @@
   <a href="readme_i18n/README_nl_NL.md">Nederlands</a>
   <a href="readme_i18n/README_tr_TR.md">Türkçe</a>
   <a href="readme_i18n/README_zh_CN.md">中文</a>
+  <a href="readme_i18n/README_uk_UA.md">Українська</a>
   <a href="readme_i18n/README_ru_RU.md">Русский</a>
   <a href="readme_i18n/README_pt_BR.md">Português Brasileiro</a>
   <a href="readme_i18n/README_sv_SE.md">Svenska</a>
@@ -60,9 +61,7 @@
 
 ## Demo
 
-Access the demo [here](https://demo.immich.app). The demo is running on a Free-tier Oracle VM in Amsterdam with a 2.4Ghz quad-core ARM64 CPU and 24GB RAM.
-
-For the mobile app, you can use `https://demo.immich.app/api` for the `Server Endpoint URL`
+Access the demo [here](https://demo.immich.app). For the mobile app, you can use `https://demo.immich.app` for the `Server Endpoint URL`.
 
 ### Login credentials
 
@@ -103,7 +102,7 @@ For the mobile app, you can use `https://demo.immich.app/api` for the `Server En
 | Read-only gallery                            | Yes    | Yes |
 | Stacked Photos                               | Yes    | Yes |
 | Tags                                         | No     | Yes |
-| Folder View                                  | No     | Yes |
+| Folder View                                  | Yes    | Yes |
 
 ## Translations
 

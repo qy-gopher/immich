@@ -1,7 +1,9 @@
+import { Injectable } from '@nestjs/common';
 import { AssetResponseDto, mapAsset } from 'src/dtos/asset-response.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
 import { BaseService } from 'src/services/base.service';
 
+@Injectable()
 export class ViewService extends BaseService {
   getUniqueOriginalPaths(auth: AuthDto): Promise<string[]> {
     return this.viewRepository.getUniqueOriginalPaths(auth.user.id);

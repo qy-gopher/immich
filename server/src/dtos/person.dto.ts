@@ -1,13 +1,23 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsArray, IsInt, IsNotEmpty, IsString, Max, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsInt, IsNotEmpty, IsNumber, IsString, Max, Min, ValidateNested } from 'class-validator';
+import { Selectable } from 'kysely';
 import { DateTime } from 'luxon';
+import { AssetFace, Person } from 'src/database';
 import { PropertyLifecycle } from 'src/decorators';
 import { AuthDto } from 'src/dtos/auth.dto';
-import { AssetFaceEntity } from 'src/entities/asset-face.entity';
-import { PersonEntity } from 'src/entities/person.entity';
 import { SourceType } from 'src/enum';
-import { IsDateStringFormat, MaxDateString, Optional, ValidateBoolean, ValidateUUID } from 'src/validation';
+import { AssetFaceTable } from 'src/schema/tables/asset-face.table';
+import { asDateString } from 'src/utils/date';
+import {
+  IsDateStringFormat,
+  MaxDateString,
+  Optional,
+  ValidateBoolean,
+  ValidateEnum,
+  ValidateHexColor,
+  ValidateUUID,
+} from 'src/validation';
 
 export class PersonCreateDto {
   /**
@@ -24,22 +34,28 @@ export class PersonCreateDto {
   @ApiProperty({ format: 'date' })
   @MaxDateString(() => DateTime.now(), { message: 'Birth date cannot be in the future' })
   @IsDateStringFormat('yyyy-MM-dd')
-  @Optional({ nullable: true })
-  birthDate?: string | null;
+  @Optional({ nullable: true, emptyToNull: true })
+  birthDate?: Date | null;
 
   /**
    * Person visibility
    */
   @ValidateBoolean({ optional: true })
   isHidden?: boolean;
+
+  @ValidateBoolean({ optional: true })
+  isFavorite?: boolean;
+
+  @Optional({ emptyToNull: true, nullable: true })
+  @ValidateHexColor()
+  color?: string | null;
 }
 
 export class PersonUpdateDto extends PersonCreateDto {
   /**
    * Asset is used to get the feature face thumbnail.
    */
-  @Optional()
-  @IsString()
+  @ValidateUUID({ optional: true })
   featureFaceAssetId?: string;
 }
 
@@ -97,6 +113,10 @@ export class PersonResponseDto {
   isHidden!: boolean;
   @PropertyLifecycle({ addedAt: 'v1.107.0' })
   updatedAt?: Date;
+  @PropertyLifecycle({ addedAt: 'v1.126.0' })
+  isFavorite?: boolean;
+  @PropertyLifecycle({ addedAt: 'v1.126.0' })
+  color?: string;
 }
 
 export class PersonWithFacesResponseDto extends PersonResponseDto {
@@ -118,7 +138,7 @@ export class AssetFaceWithoutPersonResponseDto {
   boundingBoxY1!: number;
   @ApiProperty({ type: 'integer' })
   boundingBoxY2!: number;
-  @ApiProperty({ enum: SourceType, enumName: 'SourceType' })
+  @ValidateEnum({ enum: SourceType, name: 'SourceType' })
   sourceType?: SourceType;
 }
 
@@ -146,6 +166,43 @@ export class AssetFaceUpdateItem {
   assetId!: string;
 }
 
+export class AssetFaceCreateDto extends AssetFaceUpdateItem {
+  @ApiProperty({ type: 'integer' })
+  @IsNotEmpty()
+  @IsNumber()
+  imageWidth!: number;
+
+  @ApiProperty({ type: 'integer' })
+  @IsNotEmpty()
+  @IsNumber()
+  imageHeight!: number;
+
+  @ApiProperty({ type: 'integer' })
+  @IsNotEmpty()
+  @IsNumber()
+  x!: number;
+
+  @ApiProperty({ type: 'integer' })
+  @IsNotEmpty()
+  @IsNumber()
+  y!: number;
+
+  @ApiProperty({ type: 'integer' })
+  @IsNotEmpty()
+  @IsNumber()
+  width!: number;
+
+  @ApiProperty({ type: 'integer' })
+  @IsNotEmpty()
+  @IsNumber()
+  height!: number;
+}
+
+export class AssetFaceDeleteDto {
+  @IsNotEmpty()
+  force!: boolean;
+}
+
 export class PersonStatisticsResponseDto {
   @ApiProperty({ type: 'integer' })
   assets!: number;
@@ -163,18 +220,20 @@ export class PeopleResponseDto {
   hasNextPage?: boolean;
 }
 
-export function mapPerson(person: PersonEntity): PersonResponseDto {
+export function mapPerson(person: Person): PersonResponseDto {
   return {
     id: person.id,
     name: person.name,
-    birthDate: person.birthDate,
+    birthDate: asDateString(person.birthDate),
     thumbnailPath: person.thumbnailPath,
     isHidden: person.isHidden,
+    isFavorite: person.isFavorite,
+    color: person.color ?? undefined,
     updatedAt: person.updatedAt,
   };
 }
 
-export function mapFacesWithoutPerson(face: AssetFaceEntity): AssetFaceWithoutPersonResponseDto {
+export function mapFacesWithoutPerson(face: Selectable<AssetFaceTable>): AssetFaceWithoutPersonResponseDto {
   return {
     id: face.id,
     imageHeight: face.imageHeight,
@@ -187,9 +246,16 @@ export function mapFacesWithoutPerson(face: AssetFaceEntity): AssetFaceWithoutPe
   };
 }
 
-export function mapFaces(face: AssetFaceEntity, auth: AuthDto): AssetFaceResponseDto {
+export function mapFaces(face: AssetFace, auth: AuthDto): AssetFaceResponseDto {
   return {
-    ...mapFacesWithoutPerson(face),
+    id: face.id,
+    imageHeight: face.imageHeight,
+    imageWidth: face.imageWidth,
+    boundingBoxX1: face.boundingBoxX1,
+    boundingBoxX2: face.boundingBoxX2,
+    boundingBoxY1: face.boundingBoxY1,
+    boundingBoxY2: face.boundingBoxY2,
+    sourceType: face.sourceType,
     person: face.person?.ownerId === auth.user.id ? mapPerson(face.person) : null,
   };
 }

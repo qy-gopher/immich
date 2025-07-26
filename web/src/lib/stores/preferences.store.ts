@@ -1,44 +1,17 @@
 import { browser } from '$app/environment';
 import { Theme, defaultLang } from '$lib/constants';
 import { getPreferredLocale } from '$lib/utils/i18n';
-import { persisted } from 'svelte-local-storage-store';
-import { get } from 'svelte/store';
+import { persisted } from 'svelte-persisted-store';
 
 export interface ThemeSetting {
   value: Theme;
   system: boolean;
 }
 
-export const handleToggleTheme = () => {
-  const theme = get(colorTheme);
-  theme.value = theme.value === Theme.DARK ? Theme.LIGHT : Theme.DARK;
-  colorTheme.set(theme);
-};
-
-const initTheme = (): ThemeSetting => {
-  if (browser && globalThis.matchMedia && !globalThis.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return { value: Theme.LIGHT, system: false };
-  }
-  return { value: Theme.DARK, system: false };
-};
-
-const initialTheme = initTheme();
-
-// The 'color-theme' key is also used by app.html to prevent FOUC on page load.
-export const colorTheme = persisted<ThemeSetting>('color-theme', initialTheme, {
-  serializer: {
-    parse: (text: string): ThemeSetting => {
-      const parsedText: ThemeSetting = JSON.parse(text);
-      return Object.values(Theme).includes(parsedText.value) ? parsedText : initTheme();
-    },
-    stringify: (object) => JSON.stringify(object),
-  },
-});
-
 // Locale to use for formatting dates, numbers, etc.
-export const locale = persisted<string | undefined>('locale', undefined, {
+export const locale = persisted<string | undefined>('locale', 'default', {
   serializer: {
-    parse: (text) => text,
+    parse: (text) => text || 'default',
     stringify: (object) => object ?? '',
   },
 });
@@ -62,7 +35,7 @@ export interface MapSettings {
   dateBefore: string;
 }
 
-export const mapSettings = persisted<MapSettings>('map-settings', {
+const defaultMapSettings = {
   allowDarkMode: true,
   includeArchived: false,
   onlyFavorites: false,
@@ -71,7 +44,17 @@ export const mapSettings = persisted<MapSettings>('map-settings', {
   relativeDate: '',
   dateAfter: '',
   dateBefore: '',
-});
+};
+
+const persistedObject = <T>(key: string, defaults: T) =>
+  persisted<T>(key, defaults, {
+    serializer: {
+      parse: (text) => ({ ...defaultMapSettings, ...JSON.parse(text ?? null) }),
+      stringify: JSON.stringify,
+    },
+  });
+
+export const mapSettings = persistedObject<MapSettings>('map-settings', defaultMapSettings);
 
 export const videoViewerVolume = persisted<number>('video-viewer-volume', 1, {});
 export const videoViewerMuted = persisted<boolean>('video-viewer-muted', false, {});
@@ -85,6 +68,14 @@ export interface AlbumViewSettings {
   groupOrder: string;
   sortBy: string;
   sortOrder: string;
+  collapsedGroups: {
+    // Grouping Option => Array<Group ID>
+    [group: string]: string[];
+  };
+}
+
+export interface PlacesViewSettings {
+  groupBy: string;
   collapsedGroups: {
     // Grouping Option => Array<Group ID>
     [group: string]: string[];
@@ -134,6 +125,16 @@ export const albumViewSettings = persisted<AlbumViewSettings>('album-view-settin
   groupOrder: SortOrder.Desc,
   sortBy: AlbumSortBy.MostRecentPhoto,
   sortOrder: SortOrder.Desc,
+  collapsedGroups: {},
+});
+
+export enum PlacesGroupBy {
+  None = 'None',
+  Country = 'Country',
+}
+
+export const placesViewSettings = persisted<PlacesViewSettings>('places-view-settings', {
+  groupBy: PlacesGroupBy.None,
   collapsedGroups: {},
 });
 

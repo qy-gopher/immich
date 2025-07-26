@@ -1,19 +1,20 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
-import 'package:immich_mobile/entities/store.entity.dart';
-import 'package:immich_mobile/providers/immich_logo_provider.dart';
-import 'package:immich_mobile/widgets/common/app_bar_dialog/app_bar_dialog.dart';
-import 'package:immich_mobile/widgets/common/user_circle_avatar.dart';
-
-import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/models/backup/backup_state.model.dart';
 import 'package:immich_mobile/models/server_info/server_info.model.dart';
 import 'package:immich_mobile/providers/backup/backup.provider.dart';
+import 'package:immich_mobile/providers/cast.provider.dart';
 import 'package:immich_mobile/providers/server_info.provider.dart';
+import 'package:immich_mobile/providers/user.provider.dart';
+import 'package:immich_mobile/routing/router.dart';
+import 'package:immich_mobile/widgets/asset_viewer/cast_dialog.dart';
+import 'package:immich_mobile/widgets/common/app_bar_dialog/app_bar_dialog.dart';
+import 'package:immich_mobile/widgets/common/user_circle_avatar.dart';
 
 class ImmichAppBar extends ConsumerWidget implements PreferredSizeWidget {
   @override
@@ -26,13 +27,12 @@ class ImmichAppBar extends ConsumerWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final BackUpState backupState = ref.watch(backupProvider);
-    final bool isEnableAutoBackup =
-        backupState.backgroundBackup || backupState.autoBackup;
+    final bool isEnableAutoBackup = backupState.backgroundBackup || backupState.autoBackup;
     final ServerInfo serverInfoState = ref.watch(serverInfoProvider);
-    final immichLogo = ref.watch(immichLogoProvider);
-    final user = Store.tryGet(StoreKey.currentUser);
+    final user = ref.watch(currentUserProvider);
     final isDarkTheme = context.isDarkTheme;
     const widgetSize = 30.0;
+    final isCasting = ref.watch(castProvider.select((c) => c.isCasting));
 
     buildProfileIndicator() {
       return InkWell(
@@ -41,7 +41,7 @@ class ImmichAppBar extends ConsumerWidget implements PreferredSizeWidget {
           useRootNavigator: false,
           builder: (ctx) => const ImmichAppBarDialog(),
         ),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: const BorderRadius.all(Radius.circular(12)),
         child: Badge(
           label: Container(
             decoration: BoxDecoration(
@@ -56,19 +56,21 @@ class ImmichAppBar extends ConsumerWidget implements PreferredSizeWidget {
           ),
           backgroundColor: Colors.transparent,
           alignment: Alignment.bottomRight,
-          isLabelVisible: serverInfoState.isVersionMismatch ||
-              ((user?.isAdmin ?? false) &&
-                  serverInfoState.isNewReleaseAvailable),
+          isLabelVisible:
+              serverInfoState.isVersionMismatch || ((user?.isAdmin ?? false) && serverInfoState.isNewReleaseAvailable),
           offset: const Offset(-2, -12),
           child: user == null
               ? const Icon(
                   Icons.face_outlined,
                   size: widgetSize,
                 )
-              : UserCircleAvatar(
-                  radius: 17,
-                  size: 31,
-                  user: user,
+              : Semantics(
+                  label: "logged_in_as".tr(namedArgs: {"user": user.name}),
+                  child: UserCircleAvatar(
+                    radius: 17,
+                    size: 31,
+                    user: user,
+                  ),
                 ),
         ),
       );
@@ -88,8 +90,7 @@ class ImmichAppBar extends ConsumerWidget implements PreferredSizeWidget {
               semanticsLabel: 'backup_controller_page_backup'.tr(),
             ),
           );
-        } else if (backupState.backupProgress !=
-                BackUpProgressEnum.inBackground &&
+        } else if (backupState.backupProgress != BackUpProgressEnum.inBackground &&
             backupState.backupProgress != BackUpProgressEnum.manualInProgress) {
           return Icon(
             Icons.check_outlined,
@@ -116,7 +117,7 @@ class ImmichAppBar extends ConsumerWidget implements PreferredSizeWidget {
 
       return InkWell(
         onTap: () => context.pushRoute(const BackupControllerRoute()),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: const BorderRadius.all(Radius.circular(12)),
         child: Badge(
           label: Container(
             width: widgetSize / 2,
@@ -124,7 +125,7 @@ class ImmichAppBar extends ConsumerWidget implements PreferredSizeWidget {
             decoration: BoxDecoration(
               color: badgeBackground,
               border: Border.all(
-                color: context.colorScheme.outline.withOpacity(.3),
+                color: context.colorScheme.outline.withValues(alpha: .3),
               ),
               borderRadius: BorderRadius.circular(widgetSize / 2),
             ),
@@ -158,17 +159,6 @@ class ImmichAppBar extends ConsumerWidget implements PreferredSizeWidget {
             children: [
               Builder(
                 builder: (context) {
-                  final today = DateTime.now();
-                  if (today.month == 4 && today.day == 1) {
-                    if (immichLogo.value == null) {
-                      return const SizedBox.shrink();
-                    }
-                    return Image.memory(
-                      immichLogo.value!,
-                      fit: BoxFit.cover,
-                      height: 80,
-                    );
-                  }
                   return Padding(
                     padding: const EdgeInsets.only(top: 3.0),
                     child: SvgPicture.asset(
@@ -190,6 +180,26 @@ class ImmichAppBar extends ConsumerWidget implements PreferredSizeWidget {
             (action) => Padding(
               padding: const EdgeInsets.only(right: 16),
               child: action,
+            ),
+          ),
+        if (kDebugMode || kProfileMode)
+          IconButton(
+            icon: const Icon(Icons.science_rounded),
+            onPressed: () => context.pushRoute(const FeatInDevRoute()),
+          ),
+        if (isCasting)
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: IconButton(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => const CastDialog(),
+                );
+              },
+              icon: Icon(
+                isCasting ? Icons.cast_connected_rounded : Icons.cast_rounded,
+              ),
             ),
           ),
         if (showUploadButton)

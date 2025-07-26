@@ -18,7 +18,7 @@ class AllPeoplePage extends HookConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'all_people_page_title',
+          'people',
         ).tr(),
         leading: IconButton(
           onPressed: () => context.maybePop(),
@@ -28,9 +28,7 @@ class AllPeoplePage extends HookConsumerWidget {
       body: curatedPeople.widgetWhen(
         onData: (people) => ExploreGrid(
           isPeople: true,
-          curatedContent: people
-              .map((e) => SearchCuratedContent(label: e.name, id: e.id))
-              .toList(),
+          curatedContent: people.map((e) => SearchCuratedContent(label: e.name, id: e.id)).toList(),
         ),
       ),
     );

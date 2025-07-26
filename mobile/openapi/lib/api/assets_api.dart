@@ -16,6 +16,8 @@ class AssetsApi {
 
   final ApiClient apiClient;
 
+  /// checkBulkUpload
+  ///
   /// Checks if assets exist by checksums
   ///
   /// Note: This method returns the HTTP [Response].
@@ -25,7 +27,7 @@ class AssetsApi {
   /// * [AssetBulkUploadCheckDto] assetBulkUploadCheckDto (required):
   Future<Response> checkBulkUploadWithHttpInfo(AssetBulkUploadCheckDto assetBulkUploadCheckDto,) async {
     // ignore: prefer_const_declarations
-    final path = r'/assets/bulk-upload-check';
+    final apiPath = r'/assets/bulk-upload-check';
 
     // ignore: prefer_final_locals
     Object? postBody = assetBulkUploadCheckDto;
@@ -38,7 +40,7 @@ class AssetsApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'POST',
       queryParams,
       postBody,
@@ -48,6 +50,8 @@ class AssetsApi {
     );
   }
 
+  /// checkBulkUpload
+  ///
   /// Checks if assets exist by checksums
   ///
   /// Parameters:
@@ -68,6 +72,8 @@ class AssetsApi {
     return null;
   }
 
+  /// checkExistingAssets
+  ///
   /// Checks if multiple assets exist on the server and returns all existing - used by background backup
   ///
   /// Note: This method returns the HTTP [Response].
@@ -77,7 +83,7 @@ class AssetsApi {
   /// * [CheckExistingAssetsDto] checkExistingAssetsDto (required):
   Future<Response> checkExistingAssetsWithHttpInfo(CheckExistingAssetsDto checkExistingAssetsDto,) async {
     // ignore: prefer_const_declarations
-    final path = r'/assets/exist';
+    final apiPath = r'/assets/exist';
 
     // ignore: prefer_final_locals
     Object? postBody = checkExistingAssetsDto;
@@ -90,7 +96,7 @@ class AssetsApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'POST',
       queryParams,
       postBody,
@@ -100,6 +106,8 @@ class AssetsApi {
     );
   }
 
+  /// checkExistingAssets
+  ///
   /// Checks if multiple assets exist on the server and returns all existing - used by background backup
   ///
   /// Parameters:
@@ -126,7 +134,7 @@ class AssetsApi {
   /// * [AssetBulkDeleteDto] assetBulkDeleteDto (required):
   Future<Response> deleteAssetsWithHttpInfo(AssetBulkDeleteDto assetBulkDeleteDto,) async {
     // ignore: prefer_const_declarations
-    final path = r'/assets';
+    final apiPath = r'/assets';
 
     // ignore: prefer_final_locals
     Object? postBody = assetBulkDeleteDto;
@@ -139,7 +147,7 @@ class AssetsApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'DELETE',
       queryParams,
       postBody,
@@ -167,7 +175,7 @@ class AssetsApi {
   /// * [String] key:
   Future<Response> downloadAssetWithHttpInfo(String id, { String? key, }) async {
     // ignore: prefer_const_declarations
-    final path = r'/assets/{id}/original'
+    final apiPath = r'/assets/{id}/original'
       .replaceAll('{id}', id);
 
     // ignore: prefer_final_locals
@@ -185,7 +193,7 @@ class AssetsApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'GET',
       queryParams,
       postBody,
@@ -215,6 +223,8 @@ class AssetsApi {
     return null;
   }
 
+  /// getAllUserAssetsByDeviceId
+  ///
   /// Get all asset of a device that are in the database, ID only.
   ///
   /// Note: This method returns the HTTP [Response].
@@ -224,7 +234,7 @@ class AssetsApi {
   /// * [String] deviceId (required):
   Future<Response> getAllUserAssetsByDeviceIdWithHttpInfo(String deviceId,) async {
     // ignore: prefer_const_declarations
-    final path = r'/assets/device/{deviceId}'
+    final apiPath = r'/assets/device/{deviceId}'
       .replaceAll('{deviceId}', deviceId);
 
     // ignore: prefer_final_locals
@@ -238,7 +248,7 @@ class AssetsApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'GET',
       queryParams,
       postBody,
@@ -248,6 +258,8 @@ class AssetsApi {
     );
   }
 
+  /// getAllUserAssetsByDeviceId
+  ///
   /// Get all asset of a device that are in the database, ID only.
   ///
   /// Parameters:
@@ -279,7 +291,7 @@ class AssetsApi {
   /// * [String] key:
   Future<Response> getAssetInfoWithHttpInfo(String id, { String? key, }) async {
     // ignore: prefer_const_declarations
-    final path = r'/assets/{id}'
+    final apiPath = r'/assets/{id}'
       .replaceAll('{id}', id);
 
     // ignore: prefer_final_locals
@@ -297,7 +309,7 @@ class AssetsApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'GET',
       queryParams,
       postBody,
@@ -330,14 +342,14 @@ class AssetsApi {
   /// Performs an HTTP 'GET /assets/statistics' operation and returns the [Response].
   /// Parameters:
   ///
-  /// * [bool] isArchived:
-  ///
   /// * [bool] isFavorite:
   ///
   /// * [bool] isTrashed:
-  Future<Response> getAssetStatisticsWithHttpInfo({ bool? isArchived, bool? isFavorite, bool? isTrashed, }) async {
+  ///
+  /// * [AssetVisibility] visibility:
+  Future<Response> getAssetStatisticsWithHttpInfo({ bool? isFavorite, bool? isTrashed, AssetVisibility? visibility, }) async {
     // ignore: prefer_const_declarations
-    final path = r'/assets/statistics';
+    final apiPath = r'/assets/statistics';
 
     // ignore: prefer_final_locals
     Object? postBody;
@@ -346,21 +358,21 @@ class AssetsApi {
     final headerParams = <String, String>{};
     final formParams = <String, String>{};
 
-    if (isArchived != null) {
-      queryParams.addAll(_queryParams('', 'isArchived', isArchived));
-    }
     if (isFavorite != null) {
       queryParams.addAll(_queryParams('', 'isFavorite', isFavorite));
     }
     if (isTrashed != null) {
       queryParams.addAll(_queryParams('', 'isTrashed', isTrashed));
     }
+    if (visibility != null) {
+      queryParams.addAll(_queryParams('', 'visibility', visibility));
+    }
 
     const contentTypes = <String>[];
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'GET',
       queryParams,
       postBody,
@@ -372,13 +384,13 @@ class AssetsApi {
 
   /// Parameters:
   ///
-  /// * [bool] isArchived:
-  ///
   /// * [bool] isFavorite:
   ///
   /// * [bool] isTrashed:
-  Future<AssetStatsResponseDto?> getAssetStatistics({ bool? isArchived, bool? isFavorite, bool? isTrashed, }) async {
-    final response = await getAssetStatisticsWithHttpInfo( isArchived: isArchived, isFavorite: isFavorite, isTrashed: isTrashed, );
+  ///
+  /// * [AssetVisibility] visibility:
+  Future<AssetStatsResponseDto?> getAssetStatistics({ bool? isFavorite, bool? isTrashed, AssetVisibility? visibility, }) async {
+    final response = await getAssetStatisticsWithHttpInfo( isFavorite: isFavorite, isTrashed: isTrashed, visibility: visibility, );
     if (response.statusCode >= HttpStatus.badRequest) {
       throw ApiException(response.statusCode, await _decodeBodyBytes(response));
     }
@@ -392,63 +404,6 @@ class AssetsApi {
     return null;
   }
 
-  /// Performs an HTTP 'GET /assets/memory-lane' operation and returns the [Response].
-  /// Parameters:
-  ///
-  /// * [int] day (required):
-  ///
-  /// * [int] month (required):
-  Future<Response> getMemoryLaneWithHttpInfo(int day, int month,) async {
-    // ignore: prefer_const_declarations
-    final path = r'/assets/memory-lane';
-
-    // ignore: prefer_final_locals
-    Object? postBody;
-
-    final queryParams = <QueryParam>[];
-    final headerParams = <String, String>{};
-    final formParams = <String, String>{};
-
-      queryParams.addAll(_queryParams('', 'day', day));
-      queryParams.addAll(_queryParams('', 'month', month));
-
-    const contentTypes = <String>[];
-
-
-    return apiClient.invokeAPI(
-      path,
-      'GET',
-      queryParams,
-      postBody,
-      headerParams,
-      formParams,
-      contentTypes.isEmpty ? null : contentTypes.first,
-    );
-  }
-
-  /// Parameters:
-  ///
-  /// * [int] day (required):
-  ///
-  /// * [int] month (required):
-  Future<List<MemoryLaneResponseDto>?> getMemoryLane(int day, int month,) async {
-    final response = await getMemoryLaneWithHttpInfo(day, month,);
-    if (response.statusCode >= HttpStatus.badRequest) {
-      throw ApiException(response.statusCode, await _decodeBodyBytes(response));
-    }
-    // When a remote server returns no body with a status of 204, we shall not decode it.
-    // At the time of writing this, `dart:convert` will throw an "Unexpected end of input"
-    // FormatException when trying to decode an empty string.
-    if (response.body.isNotEmpty && response.statusCode != HttpStatus.noContent) {
-      final responseBody = await _decodeBodyBytes(response);
-      return (await apiClient.deserializeAsync(responseBody, 'List<MemoryLaneResponseDto>') as List)
-        .cast<MemoryLaneResponseDto>()
-        .toList(growable: false);
-
-    }
-    return null;
-  }
-
   /// This property was deprecated in v1.116.0
   ///
   /// Note: This method returns the HTTP [Response].
@@ -458,7 +413,7 @@ class AssetsApi {
   /// * [num] count:
   Future<Response> getRandomWithHttpInfo({ num? count, }) async {
     // ignore: prefer_const_declarations
-    final path = r'/assets/random';
+    final apiPath = r'/assets/random';
 
     // ignore: prefer_final_locals
     Object? postBody;
@@ -475,7 +430,7 @@ class AssetsApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'GET',
       queryParams,
       postBody,
@@ -516,7 +471,7 @@ class AssetsApi {
   /// * [String] key:
   Future<Response> playAssetVideoWithHttpInfo(String id, { String? key, }) async {
     // ignore: prefer_const_declarations
-    final path = r'/assets/{id}/video/playback'
+    final apiPath = r'/assets/{id}/video/playback'
       .replaceAll('{id}', id);
 
     // ignore: prefer_final_locals
@@ -534,7 +489,7 @@ class AssetsApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'GET',
       queryParams,
       postBody,
@@ -564,6 +519,8 @@ class AssetsApi {
     return null;
   }
 
+  /// replaceAsset
+  ///
   /// Replace the asset with new file, without changing its id
   ///
   /// Note: This method returns the HTTP [Response].
@@ -585,9 +542,11 @@ class AssetsApi {
   /// * [String] key:
   ///
   /// * [String] duration:
-  Future<Response> replaceAssetWithHttpInfo(String id, MultipartFile assetData, String deviceAssetId, String deviceId, DateTime fileCreatedAt, DateTime fileModifiedAt, { String? key, String? duration, }) async {
+  ///
+  /// * [String] filename:
+  Future<Response> replaceAssetWithHttpInfo(String id, MultipartFile assetData, String deviceAssetId, String deviceId, DateTime fileCreatedAt, DateTime fileModifiedAt, { String? key, String? duration, String? filename, }) async {
     // ignore: prefer_const_declarations
-    final path = r'/assets/{id}/original'
+    final apiPath = r'/assets/{id}/original'
       .replaceAll('{id}', id);
 
     // ignore: prefer_final_locals
@@ -604,7 +563,7 @@ class AssetsApi {
     const contentTypes = <String>['multipart/form-data'];
 
     bool hasFields = false;
-    final mp = MultipartRequest('PUT', Uri.parse(path));
+    final mp = MultipartRequest('PUT', Uri.parse(apiPath));
     if (assetData != null) {
       hasFields = true;
       mp.fields[r'assetData'] = assetData.field;
@@ -630,12 +589,16 @@ class AssetsApi {
       hasFields = true;
       mp.fields[r'fileModifiedAt'] = parameterToString(fileModifiedAt);
     }
+    if (filename != null) {
+      hasFields = true;
+      mp.fields[r'filename'] = parameterToString(filename);
+    }
     if (hasFields) {
       postBody = mp;
     }
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'PUT',
       queryParams,
       postBody,
@@ -645,6 +608,8 @@ class AssetsApi {
     );
   }
 
+  /// replaceAsset
+  ///
   /// Replace the asset with new file, without changing its id
   ///
   /// Parameters:
@@ -664,8 +629,10 @@ class AssetsApi {
   /// * [String] key:
   ///
   /// * [String] duration:
-  Future<AssetMediaResponseDto?> replaceAsset(String id, MultipartFile assetData, String deviceAssetId, String deviceId, DateTime fileCreatedAt, DateTime fileModifiedAt, { String? key, String? duration, }) async {
-    final response = await replaceAssetWithHttpInfo(id, assetData, deviceAssetId, deviceId, fileCreatedAt, fileModifiedAt,  key: key, duration: duration, );
+  ///
+  /// * [String] filename:
+  Future<AssetMediaResponseDto?> replaceAsset(String id, MultipartFile assetData, String deviceAssetId, String deviceId, DateTime fileCreatedAt, DateTime fileModifiedAt, { String? key, String? duration, String? filename, }) async {
+    final response = await replaceAssetWithHttpInfo(id, assetData, deviceAssetId, deviceId, fileCreatedAt, fileModifiedAt,  key: key, duration: duration, filename: filename, );
     if (response.statusCode >= HttpStatus.badRequest) {
       throw ApiException(response.statusCode, await _decodeBodyBytes(response));
     }
@@ -685,7 +652,7 @@ class AssetsApi {
   /// * [AssetJobsDto] assetJobsDto (required):
   Future<Response> runAssetJobsWithHttpInfo(AssetJobsDto assetJobsDto,) async {
     // ignore: prefer_const_declarations
-    final path = r'/assets/jobs';
+    final apiPath = r'/assets/jobs';
 
     // ignore: prefer_final_locals
     Object? postBody = assetJobsDto;
@@ -698,7 +665,7 @@ class AssetsApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'POST',
       queryParams,
       postBody,
@@ -726,7 +693,7 @@ class AssetsApi {
   /// * [UpdateAssetDto] updateAssetDto (required):
   Future<Response> updateAssetWithHttpInfo(String id, UpdateAssetDto updateAssetDto,) async {
     // ignore: prefer_const_declarations
-    final path = r'/assets/{id}'
+    final apiPath = r'/assets/{id}'
       .replaceAll('{id}', id);
 
     // ignore: prefer_final_locals
@@ -740,7 +707,7 @@ class AssetsApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'PUT',
       queryParams,
       postBody,
@@ -776,7 +743,7 @@ class AssetsApi {
   /// * [AssetBulkUpdateDto] assetBulkUpdateDto (required):
   Future<Response> updateAssetsWithHttpInfo(AssetBulkUpdateDto assetBulkUpdateDto,) async {
     // ignore: prefer_const_declarations
-    final path = r'/assets';
+    final apiPath = r'/assets';
 
     // ignore: prefer_final_locals
     Object? postBody = assetBulkUpdateDto;
@@ -789,7 +756,7 @@ class AssetsApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'PUT',
       queryParams,
       postBody,
@@ -829,18 +796,18 @@ class AssetsApi {
   ///
   /// * [String] duration:
   ///
-  /// * [bool] isArchived:
+  /// * [String] filename:
   ///
   /// * [bool] isFavorite:
-  ///
-  /// * [bool] isVisible:
   ///
   /// * [String] livePhotoVideoId:
   ///
   /// * [MultipartFile] sidecarData:
-  Future<Response> uploadAssetWithHttpInfo(MultipartFile assetData, String deviceAssetId, String deviceId, DateTime fileCreatedAt, DateTime fileModifiedAt, { String? key, String? xImmichChecksum, String? duration, bool? isArchived, bool? isFavorite, bool? isVisible, String? livePhotoVideoId, MultipartFile? sidecarData, }) async {
+  ///
+  /// * [AssetVisibility] visibility:
+  Future<Response> uploadAssetWithHttpInfo(MultipartFile assetData, String deviceAssetId, String deviceId, DateTime fileCreatedAt, DateTime fileModifiedAt, { String? key, String? xImmichChecksum, String? duration, String? filename, bool? isFavorite, String? livePhotoVideoId, MultipartFile? sidecarData, AssetVisibility? visibility, }) async {
     // ignore: prefer_const_declarations
-    final path = r'/assets';
+    final apiPath = r'/assets';
 
     // ignore: prefer_final_locals
     Object? postBody;
@@ -860,7 +827,7 @@ class AssetsApi {
     const contentTypes = <String>['multipart/form-data'];
 
     bool hasFields = false;
-    final mp = MultipartRequest('POST', Uri.parse(path));
+    final mp = MultipartRequest('POST', Uri.parse(apiPath));
     if (assetData != null) {
       hasFields = true;
       mp.fields[r'assetData'] = assetData.field;
@@ -886,17 +853,13 @@ class AssetsApi {
       hasFields = true;
       mp.fields[r'fileModifiedAt'] = parameterToString(fileModifiedAt);
     }
-    if (isArchived != null) {
+    if (filename != null) {
       hasFields = true;
-      mp.fields[r'isArchived'] = parameterToString(isArchived);
+      mp.fields[r'filename'] = parameterToString(filename);
     }
     if (isFavorite != null) {
       hasFields = true;
       mp.fields[r'isFavorite'] = parameterToString(isFavorite);
-    }
-    if (isVisible != null) {
-      hasFields = true;
-      mp.fields[r'isVisible'] = parameterToString(isVisible);
     }
     if (livePhotoVideoId != null) {
       hasFields = true;
@@ -907,12 +870,16 @@ class AssetsApi {
       mp.fields[r'sidecarData'] = sidecarData.field;
       mp.files.add(sidecarData);
     }
+    if (visibility != null) {
+      hasFields = true;
+      mp.fields[r'visibility'] = parameterToString(visibility);
+    }
     if (hasFields) {
       postBody = mp;
     }
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'POST',
       queryParams,
       postBody,
@@ -941,17 +908,17 @@ class AssetsApi {
   ///
   /// * [String] duration:
   ///
-  /// * [bool] isArchived:
+  /// * [String] filename:
   ///
   /// * [bool] isFavorite:
-  ///
-  /// * [bool] isVisible:
   ///
   /// * [String] livePhotoVideoId:
   ///
   /// * [MultipartFile] sidecarData:
-  Future<AssetMediaResponseDto?> uploadAsset(MultipartFile assetData, String deviceAssetId, String deviceId, DateTime fileCreatedAt, DateTime fileModifiedAt, { String? key, String? xImmichChecksum, String? duration, bool? isArchived, bool? isFavorite, bool? isVisible, String? livePhotoVideoId, MultipartFile? sidecarData, }) async {
-    final response = await uploadAssetWithHttpInfo(assetData, deviceAssetId, deviceId, fileCreatedAt, fileModifiedAt,  key: key, xImmichChecksum: xImmichChecksum, duration: duration, isArchived: isArchived, isFavorite: isFavorite, isVisible: isVisible, livePhotoVideoId: livePhotoVideoId, sidecarData: sidecarData, );
+  ///
+  /// * [AssetVisibility] visibility:
+  Future<AssetMediaResponseDto?> uploadAsset(MultipartFile assetData, String deviceAssetId, String deviceId, DateTime fileCreatedAt, DateTime fileModifiedAt, { String? key, String? xImmichChecksum, String? duration, String? filename, bool? isFavorite, String? livePhotoVideoId, MultipartFile? sidecarData, AssetVisibility? visibility, }) async {
+    final response = await uploadAssetWithHttpInfo(assetData, deviceAssetId, deviceId, fileCreatedAt, fileModifiedAt,  key: key, xImmichChecksum: xImmichChecksum, duration: duration, filename: filename, isFavorite: isFavorite, livePhotoVideoId: livePhotoVideoId, sidecarData: sidecarData, visibility: visibility, );
     if (response.statusCode >= HttpStatus.badRequest) {
       throw ApiException(response.statusCode, await _decodeBodyBytes(response));
     }
@@ -975,7 +942,7 @@ class AssetsApi {
   /// * [AssetMediaSize] size:
   Future<Response> viewAssetWithHttpInfo(String id, { String? key, AssetMediaSize? size, }) async {
     // ignore: prefer_const_declarations
-    final path = r'/assets/{id}/thumbnail'
+    final apiPath = r'/assets/{id}/thumbnail'
       .replaceAll('{id}', id);
 
     // ignore: prefer_final_locals
@@ -996,7 +963,7 @@ class AssetsApi {
 
 
     return apiClient.invokeAPI(
-      path,
+      apiPath,
       'GET',
       queryParams,
       postBody,

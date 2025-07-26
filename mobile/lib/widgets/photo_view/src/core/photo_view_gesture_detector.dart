@@ -21,6 +21,7 @@ class PhotoViewGestureDetector extends StatelessWidget {
     this.onTapUp,
     this.onTapDown,
     this.behavior,
+    this.disableScaleGestures = false,
   });
 
   final GestureDoubleTapCallback? onDoubleTap;
@@ -43,6 +44,8 @@ class PhotoViewGestureDetector extends StatelessWidget {
 
   final HitTestBehavior? behavior;
 
+  final bool disableScaleGestures;
+
   @override
   Widget build(BuildContext context) {
     final scope = PhotoViewGestureDetectorScope.of(context);
@@ -50,12 +53,10 @@ class PhotoViewGestureDetector extends StatelessWidget {
     final Axis? axis = scope?.axis;
     final touchSlopFactor = scope?.touchSlopFactor ?? 2;
 
-    final Map<Type, GestureRecognizerFactory> gestures =
-        <Type, GestureRecognizerFactory>{};
+    final Map<Type, GestureRecognizerFactory> gestures = <Type, GestureRecognizerFactory>{};
 
     if (onTapDown != null || onTapUp != null) {
-      gestures[TapGestureRecognizer] =
-          GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+      gestures[TapGestureRecognizer] = GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
         () => TapGestureRecognizer(debugOwner: this),
         (TapGestureRecognizer instance) {
           instance
@@ -66,8 +67,7 @@ class PhotoViewGestureDetector extends StatelessWidget {
     }
 
     if (onDragStart != null || onDragEnd != null || onDragUpdate != null) {
-      gestures[VerticalDragGestureRecognizer] =
-          GestureRecognizerFactoryWithHandlers<VerticalDragGestureRecognizer>(
+      gestures[VerticalDragGestureRecognizer] = GestureRecognizerFactoryWithHandlers<VerticalDragGestureRecognizer>(
         () => VerticalDragGestureRecognizer(debugOwner: this),
         (VerticalDragGestureRecognizer instance) {
           instance
@@ -78,16 +78,14 @@ class PhotoViewGestureDetector extends StatelessWidget {
       );
     }
 
-    gestures[DoubleTapGestureRecognizer] =
-        GestureRecognizerFactoryWithHandlers<DoubleTapGestureRecognizer>(
+    gestures[DoubleTapGestureRecognizer] = GestureRecognizerFactoryWithHandlers<DoubleTapGestureRecognizer>(
       () => DoubleTapGestureRecognizer(debugOwner: this),
       (DoubleTapGestureRecognizer instance) {
         instance.onDoubleTap = onDoubleTap;
       },
     );
 
-    gestures[PhotoViewGestureRecognizer] =
-        GestureRecognizerFactoryWithHandlers<PhotoViewGestureRecognizer>(
+    gestures[PhotoViewGestureRecognizer] = GestureRecognizerFactoryWithHandlers<PhotoViewGestureRecognizer>(
       () => PhotoViewGestureRecognizer(
         hitDetector: hitDetector,
         debugOwner: this,
@@ -96,16 +94,16 @@ class PhotoViewGestureDetector extends StatelessWidget {
       ),
       (PhotoViewGestureRecognizer instance) {
         instance
+          ..dragStartBehavior = DragStartBehavior.start
           ..onStart = onScaleStart
           ..onUpdate = onScaleUpdate
-          ..onEnd = onScaleEnd;
+          ..onEnd = onScaleEnd
+          ..disableScaleGestures = disableScaleGestures;
       },
     );
 
-    gestures[LongPressGestureRecognizer] =
-        GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
-            () => LongPressGestureRecognizer(debugOwner: this),
-            (LongPressGestureRecognizer instance) {
+    gestures[LongPressGestureRecognizer] = GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+        () => LongPressGestureRecognizer(debugOwner: this), (LongPressGestureRecognizer instance) {
       instance.onLongPressStart = onLongPressStart;
     });
 
@@ -124,10 +122,12 @@ class PhotoViewGestureRecognizer extends ScaleGestureRecognizer {
     this.validateAxis,
     this.touchSlopFactor = 1,
     PointerDeviceKind? kind,
+    this.disableScaleGestures = false,
   }) : super(supportedDevices: null);
   final HitCornersDetector? hitDetector;
   final Axis? validateAxis;
   final double touchSlopFactor;
+  bool disableScaleGestures;
 
   Map<int, Offset> _pointerLocations = <int, Offset>{};
 
@@ -155,7 +155,7 @@ class PhotoViewGestureRecognizer extends ScaleGestureRecognizer {
 
   @override
   void handleEvent(PointerEvent event) {
-    if (validateAxis != null) {
+    if (validateAxis != null && !disableScaleGestures) {
       bool didChangeConfiguration = false;
       if (event is PointerMoveEvent) {
         if (!event.synthesized) {
@@ -191,16 +191,14 @@ class PhotoViewGestureRecognizer extends ScaleGestureRecognizer {
     for (final int pointer in _pointerLocations.keys) {
       focalPoint += _pointerLocations[pointer]!;
     }
-    _currentFocalPoint =
-        count > 0 ? focalPoint / count.toDouble() : Offset.zero;
+    _currentFocalPoint = count > 0 ? focalPoint / count.toDouble() : Offset.zero;
 
     // Span is the average deviation from focal point. Horizontal and vertical
     // spans are the average deviations from the focal point's horizontal and
     // vertical coordinates, respectively.
     double totalDeviation = 0.0;
     for (final int pointer in _pointerLocations.keys) {
-      totalDeviation +=
-          (_currentFocalPoint! - _pointerLocations[pointer]!).distance;
+      totalDeviation += (_currentFocalPoint! - _pointerLocations[pointer]!).distance;
     }
     _currentSpan = count > 0 ? totalDeviation / count : 0.0;
   }
@@ -212,15 +210,13 @@ class PhotoViewGestureRecognizer extends ScaleGestureRecognizer {
         : hitDetector!.shouldMove(move, Axis.horizontal);
     if (shouldMove || _pointerLocations.keys.length > 1) {
       final double spanDelta = (_currentSpan! - _initialSpan!).abs();
-      final double focalPointDelta =
-          (_currentFocalPoint! - _initialFocalPoint!).distance;
+      final double focalPointDelta = (_currentFocalPoint! - _initialFocalPoint!).distance;
       // warning: do not compare `focalPointDelta` to `kPanSlop`
       // `ScaleGestureRecognizer` uses `kPanSlop`, but `HorizontalDragGestureRecognizer` uses `kTouchSlop`
       // and PhotoView recognizer may compete with the `HorizontalDragGestureRecognizer` from a containing `PageView`
       // setting `touchSlopFactor` to 2 restores default `ScaleGestureRecognizer` behaviour as `kPanSlop = kTouchSlop * 2.0`
       // setting `touchSlopFactor` in [0, 1] will allow this recognizer to accept the gesture before the one from `PageView`
-      if (spanDelta > kScaleSlop ||
-          focalPointDelta > kTouchSlop * touchSlopFactor) {
+      if (spanDelta > kScaleSlop || focalPointDelta > kTouchSlop * touchSlopFactor) {
         acceptGesture(event.pointer);
       }
     }
@@ -253,8 +249,8 @@ class PhotoViewGestureDetectorScope extends InheritedWidget {
   });
 
   static PhotoViewGestureDetectorScope? of(BuildContext context) {
-    final PhotoViewGestureDetectorScope? scope = context
-        .dependOnInheritedWidgetOfExactType<PhotoViewGestureDetectorScope>();
+    final PhotoViewGestureDetectorScope? scope =
+        context.dependOnInheritedWidgetOfExactType<PhotoViewGestureDetectorScope>();
     return scope;
   }
 
@@ -268,8 +264,7 @@ class PhotoViewGestureDetectorScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(PhotoViewGestureDetectorScope oldWidget) {
-    return axis != oldWidget.axis &&
-        touchSlopFactor != oldWidget.touchSlopFactor;
+    return axis != oldWidget.axis && touchSlopFactor != oldWidget.touchSlopFactor;
   }
 }
 

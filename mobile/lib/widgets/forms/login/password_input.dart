@@ -23,7 +23,7 @@ class PasswordInput extends HookConsumerWidget {
       obscureText: !isPasswordVisible.value,
       controller: controller,
       decoration: InputDecoration(
-        labelText: 'login_form_label_password'.tr(),
+        labelText: 'password'.tr(),
         border: const OutlineInputBorder(),
         hintText: 'login_form_password_hint'.tr(),
         hintStyle: const TextStyle(
@@ -33,9 +33,7 @@ class PasswordInput extends HookConsumerWidget {
         suffixIcon: IconButton(
           onPressed: () => isPasswordVisible.value = !isPasswordVisible.value,
           icon: Icon(
-            isPasswordVisible.value
-                ? Icons.visibility_off_sharp
-                : Icons.visibility_sharp,
+            isPasswordVisible.value ? Icons.visibility_off_sharp : Icons.visibility_sharp,
           ),
         ),
       ),

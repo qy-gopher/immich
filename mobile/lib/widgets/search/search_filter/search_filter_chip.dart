@@ -22,13 +22,12 @@ class SearchFilterChip extends StatelessWidget {
         onTap: onTap,
         child: Card(
           elevation: 0,
-          color: context.primaryColor.withOpacity(.5),
+          color: context.primaryColor.withValues(alpha: .5),
           shape: StadiumBorder(
             side: BorderSide(color: context.colorScheme.secondaryContainer),
           ),
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(vertical: 2.0, horizontal: 14.0),
+            padding: const EdgeInsets.symmetric(vertical: 2.0, horizontal: 14.0),
             child: Row(
               children: [
                 Icon(

@@ -24,10 +24,13 @@ class SystemConfigOAuthDto {
     required this.mobileOverrideEnabled,
     required this.mobileRedirectUri,
     required this.profileSigningAlgorithm,
+    required this.roleClaim,
     required this.scope,
     required this.signingAlgorithm,
     required this.storageLabelClaim,
     required this.storageQuotaClaim,
+    required this.timeout,
+    required this.tokenEndpointAuthMethod,
   });
 
   bool autoLaunch;
@@ -41,7 +44,7 @@ class SystemConfigOAuthDto {
   String clientSecret;
 
   /// Minimum value: 0
-  num defaultStorageQuota;
+  int? defaultStorageQuota;
 
   bool enabled;
 
@@ -53,6 +56,8 @@ class SystemConfigOAuthDto {
 
   String profileSigningAlgorithm;
 
+  String roleClaim;
+
   String scope;
 
   String signingAlgorithm;
@@ -60,6 +65,11 @@ class SystemConfigOAuthDto {
   String storageLabelClaim;
 
   String storageQuotaClaim;
+
+  /// Minimum value: 1
+  int timeout;
+
+  OAuthTokenEndpointAuthMethod tokenEndpointAuthMethod;
 
   @override
   bool operator ==(Object other) => identical(this, other) || other is SystemConfigOAuthDto &&
@@ -74,10 +84,13 @@ class SystemConfigOAuthDto {
     other.mobileOverrideEnabled == mobileOverrideEnabled &&
     other.mobileRedirectUri == mobileRedirectUri &&
     other.profileSigningAlgorithm == profileSigningAlgorithm &&
+    other.roleClaim == roleClaim &&
     other.scope == scope &&
     other.signingAlgorithm == signingAlgorithm &&
     other.storageLabelClaim == storageLabelClaim &&
-    other.storageQuotaClaim == storageQuotaClaim;
+    other.storageQuotaClaim == storageQuotaClaim &&
+    other.timeout == timeout &&
+    other.tokenEndpointAuthMethod == tokenEndpointAuthMethod;
 
   @override
   int get hashCode =>
@@ -87,19 +100,22 @@ class SystemConfigOAuthDto {
     (buttonText.hashCode) +
     (clientId.hashCode) +
     (clientSecret.hashCode) +
-    (defaultStorageQuota.hashCode) +
+    (defaultStorageQuota == null ? 0 : defaultStorageQuota!.hashCode) +
     (enabled.hashCode) +
     (issuerUrl.hashCode) +
     (mobileOverrideEnabled.hashCode) +
     (mobileRedirectUri.hashCode) +
     (profileSigningAlgorithm.hashCode) +
+    (roleClaim.hashCode) +
     (scope.hashCode) +
     (signingAlgorithm.hashCode) +
     (storageLabelClaim.hashCode) +
-    (storageQuotaClaim.hashCode);
+    (storageQuotaClaim.hashCode) +
+    (timeout.hashCode) +
+    (tokenEndpointAuthMethod.hashCode);
 
   @override
-  String toString() => 'SystemConfigOAuthDto[autoLaunch=$autoLaunch, autoRegister=$autoRegister, buttonText=$buttonText, clientId=$clientId, clientSecret=$clientSecret, defaultStorageQuota=$defaultStorageQuota, enabled=$enabled, issuerUrl=$issuerUrl, mobileOverrideEnabled=$mobileOverrideEnabled, mobileRedirectUri=$mobileRedirectUri, profileSigningAlgorithm=$profileSigningAlgorithm, scope=$scope, signingAlgorithm=$signingAlgorithm, storageLabelClaim=$storageLabelClaim, storageQuotaClaim=$storageQuotaClaim]';
+  String toString() => 'SystemConfigOAuthDto[autoLaunch=$autoLaunch, autoRegister=$autoRegister, buttonText=$buttonText, clientId=$clientId, clientSecret=$clientSecret, defaultStorageQuota=$defaultStorageQuota, enabled=$enabled, issuerUrl=$issuerUrl, mobileOverrideEnabled=$mobileOverrideEnabled, mobileRedirectUri=$mobileRedirectUri, profileSigningAlgorithm=$profileSigningAlgorithm, roleClaim=$roleClaim, scope=$scope, signingAlgorithm=$signingAlgorithm, storageLabelClaim=$storageLabelClaim, storageQuotaClaim=$storageQuotaClaim, timeout=$timeout, tokenEndpointAuthMethod=$tokenEndpointAuthMethod]';
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
@@ -108,16 +124,23 @@ class SystemConfigOAuthDto {
       json[r'buttonText'] = this.buttonText;
       json[r'clientId'] = this.clientId;
       json[r'clientSecret'] = this.clientSecret;
+    if (this.defaultStorageQuota != null) {
       json[r'defaultStorageQuota'] = this.defaultStorageQuota;
+    } else {
+    //  json[r'defaultStorageQuota'] = null;
+    }
       json[r'enabled'] = this.enabled;
       json[r'issuerUrl'] = this.issuerUrl;
       json[r'mobileOverrideEnabled'] = this.mobileOverrideEnabled;
       json[r'mobileRedirectUri'] = this.mobileRedirectUri;
       json[r'profileSigningAlgorithm'] = this.profileSigningAlgorithm;
+      json[r'roleClaim'] = this.roleClaim;
       json[r'scope'] = this.scope;
       json[r'signingAlgorithm'] = this.signingAlgorithm;
       json[r'storageLabelClaim'] = this.storageLabelClaim;
       json[r'storageQuotaClaim'] = this.storageQuotaClaim;
+      json[r'timeout'] = this.timeout;
+      json[r'tokenEndpointAuthMethod'] = this.tokenEndpointAuthMethod;
     return json;
   }
 
@@ -135,16 +158,19 @@ class SystemConfigOAuthDto {
         buttonText: mapValueOfType<String>(json, r'buttonText')!,
         clientId: mapValueOfType<String>(json, r'clientId')!,
         clientSecret: mapValueOfType<String>(json, r'clientSecret')!,
-        defaultStorageQuota: num.parse('${json[r'defaultStorageQuota']}'),
+        defaultStorageQuota: mapValueOfType<int>(json, r'defaultStorageQuota'),
         enabled: mapValueOfType<bool>(json, r'enabled')!,
         issuerUrl: mapValueOfType<String>(json, r'issuerUrl')!,
         mobileOverrideEnabled: mapValueOfType<bool>(json, r'mobileOverrideEnabled')!,
         mobileRedirectUri: mapValueOfType<String>(json, r'mobileRedirectUri')!,
         profileSigningAlgorithm: mapValueOfType<String>(json, r'profileSigningAlgorithm')!,
+        roleClaim: mapValueOfType<String>(json, r'roleClaim')!,
         scope: mapValueOfType<String>(json, r'scope')!,
         signingAlgorithm: mapValueOfType<String>(json, r'signingAlgorithm')!,
         storageLabelClaim: mapValueOfType<String>(json, r'storageLabelClaim')!,
         storageQuotaClaim: mapValueOfType<String>(json, r'storageQuotaClaim')!,
+        timeout: mapValueOfType<int>(json, r'timeout')!,
+        tokenEndpointAuthMethod: OAuthTokenEndpointAuthMethod.fromJson(json[r'tokenEndpointAuthMethod'])!,
       );
     }
     return null;
@@ -203,10 +229,13 @@ class SystemConfigOAuthDto {
     'mobileOverrideEnabled',
     'mobileRedirectUri',
     'profileSigningAlgorithm',
+    'roleClaim',
     'scope',
     'signingAlgorithm',
     'storageLabelClaim',
     'storageQuotaClaim',
+    'timeout',
+    'tokenEndpointAuthMethod',
   };
 }
 

@@ -1,3 +1,7 @@
+---
+sidebar_position: 100
+---
+
 # Config File
 
 A config file can be provided as an alternative to the UI configuration.
@@ -119,7 +123,7 @@ The default configuration looks like this:
     "buttonText": "Login with OAuth",
     "clientId": "",
     "clientSecret": "",
-    "defaultStorageQuota": 0,
+    "defaultStorageQuota": null,
     "enabled": false,
     "issuerUrl": "",
     "mobileOverrideEnabled": false,

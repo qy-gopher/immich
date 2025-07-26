@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-OPENAPI_GENERATOR_VERSION=v7.8.0
+OPENAPI_GENERATOR_VERSION=v7.12.0
 
 # usage: ./bin/generate-open-api.sh
 
@@ -8,8 +8,13 @@ function dart {
   cd ./templates/mobile/serialization/native
   wget -O native_class.mustache https://raw.githubusercontent.com/OpenAPITools/openapi-generator/$OPENAPI_GENERATOR_VERSION/modules/openapi-generator/src/main/resources/dart2/serialization/native/native_class.mustache
   patch --no-backup-if-mismatch -u native_class.mustache <native_class.mustache.patch
+  patch --no-backup-if-mismatch -u native_class.mustache <native_class_nullable_items_in_arrays.patch
 
-  cd ../../../../
+  cd ../../
+  wget -O api.mustache https://raw.githubusercontent.com/OpenAPITools/openapi-generator/$OPENAPI_GENERATOR_VERSION/modules/openapi-generator/src/main/resources/dart2/api.mustache
+  patch --no-backup-if-mismatch -u api.mustache <api.mustache.patch
+
+  cd ../../
   npx --yes @openapitools/openapi-generator-cli generate -g dart -i ./immich-openapi-specs.json -o ../mobile/openapi -t ./templates/mobile
 
   # Post generate patches

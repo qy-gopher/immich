@@ -2,10 +2,29 @@ import { SetMetadata, applyDecorators } from '@nestjs/common';
 import { ApiExtension, ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
 import _ from 'lodash';
 import { ADDED_IN_PREFIX, DEPRECATED_IN_PREFIX, LIFECYCLE_EXTENSION } from 'src/constants';
-import { ImmichWorker, MetadataKey } from 'src/enum';
-import { EmitEvent } from 'src/interfaces/event.interface';
-import { JobName, QueueName } from 'src/interfaces/job.interface';
+import { ImmichWorker, JobName, MetadataKey, QueueName } from 'src/enum';
+import { EmitEvent } from 'src/repositories/event.repository';
+import { immich_uuid_v7, updated_at } from 'src/schema/functions';
+import { BeforeUpdateTrigger, Column, ColumnOptions } from 'src/sql-tools';
 import { setUnion } from 'src/utils/set';
+
+const GeneratedUuidV7Column = (options: Omit<ColumnOptions, 'type' | 'default' | 'nullable'> = {}) =>
+  Column({ ...options, type: 'uuid', nullable: false, default: () => `${immich_uuid_v7.name}()` });
+
+export const UpdateIdColumn = (options: Omit<ColumnOptions, 'type' | 'default' | 'nullable'> = {}) =>
+  GeneratedUuidV7Column(options);
+
+export const CreateIdColumn = (options: Omit<ColumnOptions, 'type' | 'default' | 'nullable'> = {}) =>
+  GeneratedUuidV7Column(options);
+
+export const PrimaryGeneratedUuidV7Column = () => GeneratedUuidV7Column({ primary: true });
+
+export const UpdatedAtTrigger = (name: string) =>
+  BeforeUpdateTrigger({
+    name,
+    scope: 'row',
+    function: updated_at,
+  });
 
 // PostgreSQL uses a 16-bit integer to indicate the number of bound parameters. This means that the
 // maximum number of parameters is 65535. Any query that tries to bind more than that (e.g. searching
@@ -99,6 +118,8 @@ export const DummyValue = {
   BUFFER: Buffer.from('abcdefghi'),
   DATE: new Date(),
   TIME_BUCKET: '2024-01-01T00:00:00.000Z',
+  BOOLEAN: true,
+  VECTOR: JSON.stringify(Array.from({ length: 512 }, () => 0)),
 };
 
 export const GENERATE_SQL_KEY = 'generate-sql-key';
@@ -106,10 +127,11 @@ export const GENERATE_SQL_KEY = 'generate-sql-key';
 export interface GenerateSqlQueries {
   name?: string;
   params: unknown[];
+  stream?: boolean;
 }
 
 export const Telemetry = (options: { enabled?: boolean }) =>
-  SetMetadata(MetadataKey.TELEMETRY_ENABLED, options?.enabled ?? true);
+  SetMetadata(MetadataKey.TelemetryEnabled, options?.enabled ?? true);
 
 /** Decorator to enable versioning/tracking of generated Sql */
 export const GenerateSql = (...options: GenerateSqlQueries[]) => SetMetadata(GENERATE_SQL_KEY, options);
@@ -123,13 +145,13 @@ export type EventConfig = {
   /** register events for these workers, defaults to all workers */
   workers?: ImmichWorker[];
 };
-export const OnEvent = (config: EventConfig) => SetMetadata(MetadataKey.EVENT_CONFIG, config);
+export const OnEvent = (config: EventConfig) => SetMetadata(MetadataKey.EventConfig, config);
 
 export type JobConfig = {
   name: JobName;
   queue: QueueName;
 };
-export const OnJob = (config: JobConfig) => SetMetadata(MetadataKey.JOB_CONFIG, config);
+export const OnJob = (config: JobConfig) => SetMetadata(MetadataKey.JobConfig, config);
 
 type LifecycleRelease = 'NEXT_RELEASE' | string;
 type LifecycleMetadata = {

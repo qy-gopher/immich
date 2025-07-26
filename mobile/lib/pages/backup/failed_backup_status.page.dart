@@ -42,9 +42,11 @@ class FailedBackupStatusPage extends HookConsumerWidget {
               vertical: 4,
             ),
             child: Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15), // if you need this
-                side: const BorderSide(
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.all(
+                  Radius.circular(15), // if you need this
+                ),
+                side: BorderSide(
                   color: Colors.black12,
                   width: 1,
                 ),
@@ -95,9 +97,7 @@ class FailedBackupStatusPage extends HookConsumerWidget {
                                 ),
                                 style: TextStyle(
                                   fontWeight: FontWeight.w600,
-                                  color: context.isDarkTheme
-                                      ? Colors.white70
-                                      : Colors.grey[800],
+                                  color: context.isDarkTheme ? Colors.white70 : Colors.grey[800],
                                 ),
                               ),
                               Icon(
@@ -123,9 +123,7 @@ class FailedBackupStatusPage extends HookConsumerWidget {
                             errorAsset.errorMessage,
                             style: TextStyle(
                               fontWeight: FontWeight.w500,
-                              color: context.isDarkTheme
-                                  ? Colors.white70
-                                  : Colors.grey[800],
+                              color: context.isDarkTheme ? Colors.white70 : Colors.grey[800],
                             ),
                           ),
                         ],

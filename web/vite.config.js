@@ -1,5 +1,6 @@
 import { enhancedImages } from '@sveltejs/enhanced-img';
 import { sveltekit } from '@sveltejs/kit/vite';
+import tailwindcss from '@tailwindcss/vite';
 import { svelteTesting } from '@testing-library/svelte/vite';
 import path from 'node:path';
 import { visualizer } from 'rollup-plugin-visualizer';
@@ -14,11 +15,15 @@ const upstream = {
 };
 
 export default defineConfig({
+  build: {
+    target: 'es2022',
+  },
   resolve: {
     alias: {
       'xmlhttprequest-ssl': './node_modules/engine.io-client/lib/xmlhttprequest.js',
       // eslint-disable-next-line unicorn/prefer-module
       '@test-data': path.resolve(__dirname, './src/test-data'),
+      // '@immich/ui': path.resolve(__dirname, '../../ui'),
     },
   },
   server: {
@@ -28,8 +33,11 @@ export default defineConfig({
       '/.well-known/immich': upstream,
       '/custom.css': upstream,
     },
+    allowedHosts: true,
   },
   plugins: [
+    enhancedImages(),
+    tailwindcss(),
     sveltekit(),
     process.env.BUILD_STATS === 'true'
       ? visualizer({
@@ -37,7 +45,6 @@ export default defineConfig({
           filename: 'stats.html',
         })
       : undefined,
-    enhancedImages(),
     svelteTesting(),
   ],
   optimizeDeps: {
@@ -46,7 +53,7 @@ export default defineConfig({
   test: {
     include: ['src/**/*.{test,spec}.{js,ts}'],
     globals: true,
-    environment: 'jsdom',
+    environment: 'happy-dom',
     setupFiles: ['./src/test-data/setup.ts'],
     sequence: {
       hooks: 'list',

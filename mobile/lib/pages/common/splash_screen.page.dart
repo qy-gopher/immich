@@ -1,11 +1,12 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:immich_mobile/providers/backup/backup.provider.dart';
+import 'package:immich_mobile/domain/models/store.model.dart';
+import 'package:immich_mobile/entities/store.entity.dart';
 import 'package:immich_mobile/providers/auth.provider.dart';
+import 'package:immich_mobile/providers/backup/backup.provider.dart';
 import 'package:immich_mobile/providers/gallery_permission.provider.dart';
 import 'package:immich_mobile/routing/router.dart';
-import 'package:immich_mobile/entities/store.entity.dart';
 import 'package:logging/logging.dart';
 
 @RoutePage()
@@ -41,40 +42,39 @@ class SplashScreenPageState extends ConsumerState<SplashScreenPage> {
     final endpoint = Store.tryGet(StoreKey.serverEndpoint);
     final accessToken = Store.tryGet(StoreKey.accessToken);
 
-    bool isAuthSuccess = false;
-
     if (accessToken != null && serverUrl != null && endpoint != null) {
-      try {
-        isAuthSuccess = await ref.read(authProvider.notifier).saveAuthInfo(
-              accessToken: accessToken,
-            );
-      } catch (error, stackTrace) {
-        log.severe(
-          'Cannot set success login info',
-          error,
-          stackTrace,
-        );
-      }
+      ref.read(authProvider.notifier).saveAuthInfo(accessToken: accessToken).then(
+            (a) => {
+              log.info('Successfully updated auth info with access token: $accessToken'),
+            },
+            onError: (exception) => {
+              log.severe(
+                'Failed to update auth info with access token: $accessToken',
+              ),
+              ref.read(authProvider.notifier).logout(),
+              context.replaceRoute(const LoginRoute()),
+            },
+          );
     } else {
-      isAuthSuccess = false;
       log.severe(
-        'Missing authentication, server, or endpoint info from the local store',
-      );
-    }
-
-    if (!isAuthSuccess) {
-      log.severe(
-        'Unable to login using offline or online methods - Logging out completely',
+        'Missing crucial offline login info - Logging out completely',
       );
       ref.read(authProvider.notifier).logout();
       context.replaceRoute(const LoginRoute());
       return;
     }
 
-    context.replaceRoute(const TabControllerRoute());
+    if (context.router.current.name == SplashScreenRoute.name) {
+      context.replaceRoute(
+        Store.isBetaTimelineEnabled ? const TabShellRoute() : const TabControllerRoute(),
+      );
+    }
 
-    final hasPermission =
-        await ref.read(galleryPermissionNotifier.notifier).hasPermission;
+    if (Store.isBetaTimelineEnabled) {
+      return;
+    }
+
+    final hasPermission = await ref.read(galleryPermissionNotifier.notifier).hasPermission;
     if (hasPermission) {
       // Resume backup (if enable) then navigate
       ref.watch(backupProvider.notifier).resumeBackup();

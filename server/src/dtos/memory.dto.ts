@@ -1,10 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsObject, IsPositive, ValidateNested } from 'class-validator';
+import { IsInt, IsObject, IsPositive, ValidateNested } from 'class-validator';
+import { Memory } from 'src/database';
 import { AssetResponseDto, mapAsset } from 'src/dtos/asset-response.dto';
-import { MemoryEntity } from 'src/entities/memory.entity';
+import { AuthDto } from 'src/dtos/auth.dto';
 import { MemoryType } from 'src/enum';
-import { ValidateBoolean, ValidateDate, ValidateUUID } from 'src/validation';
+import { ValidateBoolean, ValidateDate, ValidateEnum, ValidateUUID } from 'src/validation';
 
 class MemoryBaseDto {
   @ValidateBoolean({ optional: true })
@@ -12,6 +13,20 @@ class MemoryBaseDto {
 
   @ValidateDate({ optional: true })
   seenAt?: Date;
+}
+
+export class MemorySearchDto {
+  @ValidateEnum({ enum: MemoryType, name: 'MemoryType', optional: true })
+  type?: MemoryType;
+
+  @ValidateDate({ optional: true })
+  for?: Date;
+
+  @ValidateBoolean({ optional: true })
+  isTrashed?: boolean;
+
+  @ValidateBoolean({ optional: true })
+  isSaved?: boolean;
 }
 
 class OnThisDayDto {
@@ -28,15 +43,14 @@ export class MemoryUpdateDto extends MemoryBaseDto {
 }
 
 export class MemoryCreateDto extends MemoryBaseDto {
-  @IsEnum(MemoryType)
-  @ApiProperty({ enum: MemoryType, enumName: 'MemoryType' })
+  @ValidateEnum({ enum: MemoryType, name: 'MemoryType' })
   type!: MemoryType;
 
   @IsObject()
   @ValidateNested()
   @Type((options) => {
     switch (options?.object.type) {
-      case MemoryType.ON_THIS_DAY: {
+      case MemoryType.OnThisDay: {
         return OnThisDayDto;
       }
 
@@ -54,6 +68,11 @@ export class MemoryCreateDto extends MemoryBaseDto {
   assetIds?: string[];
 }
 
+export class MemoryStatisticsResponseDto {
+  @ApiProperty({ type: 'integer' })
+  total!: number;
+}
+
 export class MemoryResponseDto {
   id!: string;
   createdAt!: Date;
@@ -61,26 +80,30 @@ export class MemoryResponseDto {
   deletedAt?: Date;
   memoryAt!: Date;
   seenAt?: Date;
+  showAt?: Date;
+  hideAt?: Date;
   ownerId!: string;
-  @ApiProperty({ enumName: 'MemoryType', enum: MemoryType })
+  @ValidateEnum({ enum: MemoryType, name: 'MemoryType' })
   type!: MemoryType;
   data!: MemoryData;
   isSaved!: boolean;
   assets!: AssetResponseDto[];
 }
 
-export const mapMemory = (entity: MemoryEntity): MemoryResponseDto => {
+export const mapMemory = (entity: Memory, auth: AuthDto): MemoryResponseDto => {
   return {
     id: entity.id,
     createdAt: entity.createdAt,
     updatedAt: entity.updatedAt,
-    deletedAt: entity.deletedAt,
+    deletedAt: entity.deletedAt ?? undefined,
     memoryAt: entity.memoryAt,
-    seenAt: entity.seenAt,
+    seenAt: entity.seenAt ?? undefined,
+    showAt: entity.showAt ?? undefined,
+    hideAt: entity.hideAt ?? undefined,
     ownerId: entity.ownerId,
-    type: entity.type,
-    data: entity.data,
+    type: entity.type as MemoryType,
+    data: entity.data as unknown as MemoryData,
     isSaved: entity.isSaved,
-    assets: entity.assets.map((asset) => mapAsset(asset)),
+    assets: ('assets' in entity ? entity.assets : []).map((asset) => mapAsset(asset, { auth })),
   };
 };

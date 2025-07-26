@@ -1,9 +1,9 @@
 <script lang="ts">
   import Badge from '$lib/components/elements/badge.svelte';
-  import CircleIconButton from '$lib/components/elements/buttons/circle-icon-button.svelte';
   import Icon from '$lib/components/elements/icon.svelte';
   import { locale } from '$lib/stores/preferences.store';
   import { JobCommand, type JobCommandDto, type JobCountsDto, type QueueStatusDto } from '@immich/sdk';
+  import { IconButton } from '@immich/ui';
   import {
     mdiAlertCircle,
     mdiAllInclusive,
@@ -51,7 +51,7 @@
   let isIdle = $derived(!queueStatus.isActive && !queueStatus.isPaused);
   let multipleButtons = $derived(allText || refreshText);
 
-  const commonClasses = 'flex place-items-center justify-between w-full py-2 sm:py-4 pr-4 pl-6';
+  const commonClasses = 'flex place-items-center justify-between w-full py-2 sm:py-4 pe-4 ps-6';
 </script>
 
 <div
@@ -71,24 +71,24 @@
         </span>
         <div class="flex gap-2">
           {#if jobCounts.failed > 0}
-            <Badge color="primary">
+            <Badge>
               <div class="flex flex-row gap-1">
                 <span class="text-sm">
                   {$t('admin.jobs_failed', { values: { jobCount: jobCounts.failed.toLocaleString($locale) } })}
                 </span>
-                <CircleIconButton
+                <IconButton
                   color="primary"
                   icon={mdiClose}
-                  title={$t('clear_message')}
-                  size="12"
-                  padding="1"
+                  aria-label={$t('clear_message')}
+                  size="tiny"
+                  shape="round"
                   onclick={() => onCommand({ command: JobCommand.ClearFailed, force: false })}
                 />
               </div>
             </Badge>
           {/if}
           {#if jobCounts.delayed > 0}
-            <Badge color="secondary">
+            <Badge>
               <span class="text-sm">
                 {$t('admin.jobs_delayed', { values: { jobCount: jobCounts.delayed.toLocaleString($locale) } })}
               </span>
@@ -110,7 +110,7 @@
 
       <div class="mt-2 flex w-full max-w-md flex-col sm:flex-row">
         <div
-          class="{commonClasses} rounded-t-lg bg-immich-primary text-white dark:bg-immich-dark-primary dark:text-immich-dark-gray sm:rounded-l-lg sm:rounded-r-none"
+          class="{commonClasses} rounded-t-lg bg-immich-primary text-white dark:bg-immich-dark-primary dark:text-immich-dark-gray sm:rounded-s-lg sm:rounded-e-none"
         >
           <p>{$t('active')}</p>
           <p class="text-2xl">
@@ -119,7 +119,7 @@
         </div>
 
         <div
-          class="{commonClasses} flex-row-reverse rounded-b-lg bg-gray-200 text-immich-dark-bg dark:bg-gray-700 dark:text-immich-gray sm:rounded-l-none sm:rounded-r-lg"
+          class="{commonClasses} flex-row-reverse rounded-b-lg bg-gray-200 text-immich-dark-bg dark:bg-gray-700 dark:text-immich-gray sm:rounded-s-none sm:rounded-e-lg"
         >
           <p class="text-2xl">
             {waitingCount.toLocaleString($locale)}
@@ -185,7 +185,7 @@
     {#if !disabled && !multipleButtons && isIdle}
       <JobTileButton color="light-gray" onClick={() => onCommand({ command: JobCommand.Start, force: false })}>
         <Icon path={mdiPlay} size="48" />
-        {$t('start').toUpperCase()}
+        {missingText}
       </JobTileButton>
     {/if}
   </div>

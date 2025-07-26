@@ -1,9 +1,10 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/constants/enums.dart';
+import 'package:immich_mobile/domain/models/album/album.model.dart' show AlbumAssetOrder, RemoteAlbum;
 import 'package:immich_mobile/entities/album.entity.dart';
 import 'package:immich_mobile/entities/asset.entity.dart';
-import 'package:immich_mobile/entities/user.entity.dart';
-import 'package:immich_mobile/interfaces/album_api.interface.dart';
+import 'package:immich_mobile/infrastructure/entities/user.entity.dart' as entity;
+import 'package:immich_mobile/infrastructure/utils/user.converter.dart';
 import 'package:immich_mobile/providers/api.provider.dart';
 import 'package:immich_mobile/repositories/api.repository.dart';
 import 'package:openapi/api.dart';
@@ -12,28 +13,26 @@ final albumApiRepositoryProvider = Provider(
   (ref) => AlbumApiRepository(ref.watch(apiServiceProvider).albumsApi),
 );
 
-class AlbumApiRepository extends ApiRepository implements IAlbumApiRepository {
+class AlbumApiRepository extends ApiRepository {
   final AlbumsApi _api;
 
   AlbumApiRepository(this._api);
 
-  @override
   Future<Album> get(String id) async {
     final dto = await checkNull(_api.getAlbumInfo(id));
     return _toAlbum(dto);
   }
 
-  @override
   Future<List<Album>> getAll({bool? shared}) async {
     final dtos = await checkNull(_api.getAllAlbums(shared: shared));
     return dtos.map(_toAlbum).toList();
   }
 
-  @override
   Future<Album> create(
     String name, {
     required Iterable<String> assetIds,
     Iterable<String> sharedUserIds = const [],
+    String? description,
   }) async {
     final users = sharedUserIds.map(
       (id) => AlbumUserCreateDto(userId: id, role: AlbumUserRole.editor),
@@ -42,6 +41,7 @@ class AlbumApiRepository extends ApiRepository implements IAlbumApiRepository {
       _api.createAlbum(
         CreateAlbumDto(
           albumName: name,
+          description: description,
           assetIds: assetIds.toList(),
           albumUsers: users.toList(),
         ),
@@ -50,7 +50,25 @@ class AlbumApiRepository extends ApiRepository implements IAlbumApiRepository {
     return _toAlbum(responseDto);
   }
 
-  @override
+  // TODO: Change name after removing old method
+  Future<RemoteAlbum> createDriftAlbum(
+    String name, {
+    required Iterable<String> assetIds,
+    String? description,
+  }) async {
+    final responseDto = await checkNull(
+      _api.createAlbum(
+        CreateAlbumDto(
+          albumName: name,
+          description: description,
+          assetIds: assetIds.toList(),
+        ),
+      ),
+    );
+
+    return _toRemoteAlbum(responseDto);
+  }
+
   Future<Album> update(
     String albumId, {
     String? name,
@@ -80,12 +98,10 @@ class AlbumApiRepository extends ApiRepository implements IAlbumApiRepository {
     return _toAlbum(response);
   }
 
-  @override
   Future<void> delete(String albumId) {
     return _api.deleteAlbum(albumId);
   }
 
-  @override
   Future<({List<String> added, List<String> duplicates})> addAssets(
     String albumId,
     Iterable<String> assetIds,
@@ -110,7 +126,6 @@ class AlbumApiRepository extends ApiRepository implements IAlbumApiRepository {
     return (added: added, duplicates: duplicates);
   }
 
-  @override
   Future<({List<String> removed, List<String> failed})> removeAssets(
     String albumId,
     Iterable<String> assetIds,
@@ -132,10 +147,8 @@ class AlbumApiRepository extends ApiRepository implements IAlbumApiRepository {
     return (removed: removed, failed: failed);
   }
 
-  @override
   Future<Album> addUsers(String albumId, Iterable<String> userIds) async {
-    final albumUsers =
-        userIds.map((userId) => AlbumUserAddDto(userId: userId)).toList();
+    final albumUsers = userIds.map((userId) => AlbumUserAddDto(userId: userId)).toList();
     final response = await checkNull(
       _api.addUsersToAlbum(
         albumId,
@@ -145,7 +158,6 @@ class AlbumApiRepository extends ApiRepository implements IAlbumApiRepository {
     return _toAlbum(response);
   }
 
-  @override
   Future<void> removeUser(String albumId, {required String userId}) {
     return _api.removeUserFromAlbum(albumId, userId);
   }
@@ -159,18 +171,35 @@ class AlbumApiRepository extends ApiRepository implements IAlbumApiRepository {
       lastModifiedAssetTimestamp: dto.lastModifiedAssetTimestamp,
       shared: dto.shared,
       startDate: dto.startDate,
+      description: dto.description,
       endDate: dto.endDate,
       activityEnabled: dto.isActivityEnabled,
       sortOrder: dto.order == AssetOrder.asc ? SortOrder.asc : SortOrder.desc,
     );
     album.remoteAssetCount = dto.assetCount;
-    album.owner.value = User.fromSimpleUserDto(dto.owner);
+    album.owner.value = entity.User.fromDto(UserConverter.fromSimpleUserDto(dto.owner));
     album.remoteThumbnailAssetId = dto.albumThumbnailAssetId;
-    final users = dto.albumUsers
-        .map((albumUser) => User.fromSimpleUserDto(albumUser.user));
-    album.sharedUsers.addAll(users);
+    final users = dto.albumUsers.map((albumUser) => UserConverter.fromSimpleUserDto(albumUser.user));
+    album.sharedUsers.addAll(users.map(entity.User.fromDto));
     final assets = dto.assets.map(Asset.remote).toList();
     album.assets.addAll(assets);
+
     return album;
+  }
+
+  static RemoteAlbum _toRemoteAlbum(AlbumResponseDto dto) {
+    return RemoteAlbum(
+      id: dto.id,
+      name: dto.albumName,
+      ownerId: dto.owner.id,
+      description: dto.description,
+      createdAt: dto.createdAt,
+      updatedAt: dto.updatedAt,
+      thumbnailAssetId: dto.albumThumbnailAssetId,
+      isActivityEnabled: dto.isActivityEnabled,
+      order: dto.order == AssetOrder.asc ? AlbumAssetOrder.asc : AlbumAssetOrder.desc,
+      assetCount: dto.assetCount,
+      ownerName: dto.owner.name,
+    );
   }
 }

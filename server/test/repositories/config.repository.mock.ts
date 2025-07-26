@@ -1,15 +1,16 @@
-import { ImmichEnvironment, ImmichWorker } from 'src/enum';
-import { EnvData, IConfigRepository } from 'src/interfaces/config.interface';
-import { DatabaseExtension } from 'src/interfaces/database.interface';
+import { DatabaseExtension, ImmichEnvironment, ImmichWorker } from 'src/enum';
+import { ConfigRepository, EnvData } from 'src/repositories/config.repository';
+import { RepositoryInterface } from 'src/types';
 import { Mocked, vitest } from 'vitest';
 
 const envData: EnvData = {
   port: 2283,
-  environment: ImmichEnvironment.PRODUCTION,
+  environment: ImmichEnvironment.Production,
 
   buildMetadata: {},
   bull: {
     config: {
+      connection: {},
       prefix: 'immich_bull',
     },
     queues: [{ name: 'queue-1' }],
@@ -23,18 +24,14 @@ const envData: EnvData = {
     config: {
       connectionType: 'parts',
       database: 'immich',
-      type: 'postgres',
       host: 'database',
       port: 5432,
       username: 'postgres',
       password: 'postgres',
-      name: 'immich',
-      synchronize: false,
-      migrationsRun: true,
     },
 
     skipMigrations: false,
-    vectorExtension: DatabaseExtension.VECTORS,
+    vectorExtension: DatabaseExtension.Vectors,
   },
 
   licensePublicKey: {
@@ -87,15 +84,16 @@ const envData: EnvData = {
     metrics: new Set(),
   },
 
-  workers: [ImmichWorker.API, ImmichWorker.MICROSERVICES],
+  workers: [ImmichWorker.Api, ImmichWorker.Microservices],
 
   noColor: false,
 };
 
 export const mockEnvData = (config: Partial<EnvData>) => ({ ...envData, ...config });
-export const newConfigRepositoryMock = (): Mocked<IConfigRepository> => {
+export const newConfigRepositoryMock = (): Mocked<RepositoryInterface<ConfigRepository>> => {
   return {
     getEnv: vitest.fn().mockReturnValue(mockEnvData({})),
-    getWorker: vitest.fn().mockReturnValue(ImmichWorker.API),
+    getWorker: vitest.fn().mockReturnValue(ImmichWorker.Api),
+    isDev: vitest.fn().mockReturnValue(false),
   };
 };

@@ -1,15 +1,10 @@
 <script lang="ts">
-  import { onMount, onDestroy, tick } from 'svelte';
-  import { t } from 'svelte-i18n';
   import { getAssetOriginalUrl } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
   import { getAltText } from '$lib/utils/thumbnail-util';
+  import { onDestroy, onMount, tick } from 'svelte';
+  import { t } from 'svelte-i18n';
 
-  import { imgElement, cropAreaEl, resetCropStore, overlayEl, isResizingOrDragging, cropFrame } from './crop-store';
-  import { draw } from './drawing';
-  import { onImageLoad, resizeCanvas } from './image-loading';
-  import { handleMouseDown, handleMouseMove, handleMouseUp } from './mouse-handlers';
-  import { recalculateCrop, animateCropChange } from './crop-settings';
   import {
     changedOriention,
     cropAspectRatio,
@@ -17,7 +12,13 @@
     resetGlobalCropStore,
     rotateDegrees,
   } from '$lib/stores/asset-editor.store';
+  import { toTimelineAsset } from '$lib/utils/timeline-util';
   import type { AssetResponseDto } from '@immich/sdk';
+  import { animateCropChange, recalculateCrop } from './crop-settings';
+  import { cropAreaEl, cropFrame, imgElement, isResizingOrDragging, overlayEl, resetCropStore } from './crop-store';
+  import { draw } from './drawing';
+  import { onImageLoad, resizeCanvas } from './image-loading';
+  import { handleMouseDown, handleMouseMove, handleMouseUp } from './mouse-handlers';
 
   interface Props {
     asset: AssetResponseDto;
@@ -50,14 +51,12 @@
     img = new Image();
     await tick();
 
-    img.src = getAssetOriginalUrl({ id: asset.id, checksum: asset.checksum });
+    img.src = getAssetOriginalUrl({ id: asset.id, cacheKey: asset.thumbhash });
 
-    img.addEventListener('load', () => onImageLoad(true));
-    img.addEventListener('error', (error) => {
-      handleError(error, $t('error_loading_image'));
-    });
+    img.addEventListener('load', () => onImageLoad(true), { passive: true });
+    img.addEventListener('error', (error) => handleError(error, $t('error_loading_image')), { passive: true });
 
-    globalThis.addEventListener('mousemove', handleMouseMove);
+    globalThis.addEventListener('mousemove', handleMouseMove, { passive: true });
   });
 
   onDestroy(() => {
@@ -81,7 +80,7 @@
     aria-label="Crop area"
     type="button"
   >
-    <img draggable="false" src={img?.src} alt={$getAltText(asset)} />
+    <img draggable="false" src={img?.src} alt={$getAltText(toTimelineAsset(asset))} />
     <div class={`${$isResizingOrDragging ? 'resizing' : ''} crop-frame`} bind:this={$cropFrame}>
       <div class="grid"></div>
       <div class="corner top-left"></div>
@@ -145,9 +144,9 @@
     bottom: 0;
     --color: white;
     --shadow: #00000057;
-    background-image: linear-gradient(var(--color) 1px, transparent 0),
-      linear-gradient(90deg, var(--color) 1px, transparent 0), linear-gradient(var(--shadow) 3px, transparent 0),
-      linear-gradient(90deg, var(--shadow) 3px, transparent 0);
+    background-image:
+      linear-gradient(var(--color) 1px, transparent 0), linear-gradient(90deg, var(--color) 1px, transparent 0),
+      linear-gradient(var(--shadow) 3px, transparent 0), linear-gradient(90deg, var(--shadow) 3px, transparent 0);
     background-size: calc(100% / 3) calc(100% / 3);
     opacity: 0;
     transition: opacity 0.1s ease;
@@ -169,7 +168,6 @@
     border: 2px solid white;
     box-sizing: border-box;
     pointer-events: none;
-    z-index: 1;
   }
 
   .corner {

@@ -1,25 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import { join } from 'node:path';
+import { APP_MEDIA_LOCATION } from 'src/constants';
 import { StorageCore } from 'src/cores/storage.core';
 import { OnEvent, OnJob } from 'src/decorators';
-import { SystemFlags } from 'src/entities/system-metadata.entity';
-import { StorageFolder, SystemMetadataKey } from 'src/enum';
-import { DatabaseLock } from 'src/interfaces/database.interface';
-import { JobName, JobOf, JobStatus, QueueName } from 'src/interfaces/job.interface';
+import { DatabaseLock, JobName, JobStatus, QueueName, StorageFolder, SystemMetadataKey } from 'src/enum';
 import { BaseService } from 'src/services/base.service';
+import { JobOf, SystemFlags } from 'src/types';
 import { ImmichStartupError } from 'src/utils/misc';
 
 const docsMessage = `Please see https://immich.app/docs/administration/system-integrity#folder-checks for more information.`;
 
 @Injectable()
 export class StorageService extends BaseService {
-  @OnEvent({ name: 'app.bootstrap' })
+  @OnEvent({ name: 'AppBootstrap' })
   async onBootstrap() {
     const envData = this.configRepository.getEnv();
 
     await this.databaseRepository.withLock(DatabaseLock.SystemFileMounts, async () => {
       const flags =
-        (await this.systemMetadataRepository.get(SystemMetadataKey.SYSTEM_FLAGS)) ||
+        (await this.systemMetadataRepository.get(SystemMetadataKey.SystemFlags)) ||
         ({ mountChecks: {} } as SystemFlags);
 
       if (!flags.mountChecks) {
@@ -48,24 +47,51 @@ export class StorageService extends BaseService {
         }
 
         if (updated) {
-          await this.systemMetadataRepository.set(SystemMetadataKey.SYSTEM_FLAGS, flags);
+          await this.systemMetadataRepository.set(SystemMetadataKey.SystemFlags, flags);
           this.logger.log('Successfully enabled system mount folders checks');
         }
 
         this.logger.log('Successfully verified system mount folder checks');
       } catch (error) {
         if (envData.storage.ignoreMountCheckErrors) {
-          this.logger.error(error);
+          this.logger.error(error as Error);
           this.logger.warn('Ignoring mount folder errors');
         } else {
           throw error;
         }
       }
     });
+
+    await this.databaseRepository.withLock(DatabaseLock.MediaLocation, async () => {
+      const current = APP_MEDIA_LOCATION;
+      const savedValue = await this.systemMetadataRepository.get(SystemMetadataKey.MediaLocation);
+      let previous = savedValue?.location || '';
+
+      if (previous !== current) {
+        this.logger.log(`Media location changed (from=${previous}, to=${current})`);
+
+        const samples = await this.assetRepository.getFileSamples();
+        if (samples.length > 0) {
+          const originalPath = samples[0].originalPath;
+          if (!previous) {
+            previous = originalPath.startsWith('upload/') ? 'upload' : '/usr/src/app/upload';
+          }
+
+          if (previous && originalPath.startsWith(previous)) {
+            this.logger.warn(
+              `Detected a change to IMMICH_MEDIA_LOCATION, performing an automatic migration of file paths from ${previous} to ${current}, this may take awhile`,
+            );
+            await this.databaseRepository.migrateFilePaths(previous, current);
+          }
+        }
+
+        await this.systemMetadataRepository.set(SystemMetadataKey.MediaLocation, { location: current });
+      }
+    });
   }
 
-  @OnJob({ name: JobName.DELETE_FILES, queue: QueueName.BACKGROUND_TASK })
-  async handleDeleteFiles(job: JobOf<JobName.DELETE_FILES>): Promise<JobStatus> {
+  @OnJob({ name: JobName.FileDelete, queue: QueueName.BackgroundTask })
+  async handleDeleteFiles(job: JobOf<JobName.FileDelete>): Promise<JobStatus> {
     const { files } = job;
 
     // TODO: one job per file
@@ -81,7 +107,7 @@ export class StorageService extends BaseService {
       }
     }
 
-    return JobStatus.SUCCESS;
+    return JobStatus.Success;
   }
 
   private async verifyReadAccess(folder: StorageFolder) {
@@ -89,8 +115,8 @@ export class StorageService extends BaseService {
     try {
       await this.storageRepository.readFile(internalPath);
     } catch (error) {
-      this.logger.error(`Failed to read ${internalPath}: ${error}`);
-      throw new ImmichStartupError(`Failed to read "${externalPath} - ${docsMessage}"`);
+      this.logger.error(`Failed to read (${internalPath}): ${error}`);
+      throw new ImmichStartupError(`Failed to read: "${externalPath} (${internalPath}) - ${docsMessage}"`);
     }
   }
 

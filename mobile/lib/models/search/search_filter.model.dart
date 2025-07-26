@@ -1,8 +1,8 @@
 // ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'dart:convert';
 
+import 'package:immich_mobile/domain/models/person.model.dart';
 import 'package:immich_mobile/entities/asset.entity.dart';
-import 'package:immich_mobile/interfaces/person_api.interface.dart';
 
 class SearchLocationFilter {
   String? country;
@@ -48,16 +48,13 @@ class SearchLocationFilter {
       SearchLocationFilter.fromMap(json.decode(source) as Map<String, dynamic>);
 
   @override
-  String toString() =>
-      'SearchLocationFilter(country: $country, state: $state, city: $city)';
+  String toString() => 'SearchLocationFilter(country: $country, state: $state, city: $city)';
 
   @override
   bool operator ==(covariant SearchLocationFilter other) {
     if (identical(this, other)) return true;
 
-    return other.country == country &&
-        other.state == state &&
-        other.city == city;
+    return other.country == country && other.state == state && other.city == city;
   }
 
   @override
@@ -142,12 +139,8 @@ class SearchDateFilter {
 
   factory SearchDateFilter.fromMap(Map<String, dynamic> map) {
     return SearchDateFilter(
-      takenBefore: map['takenBefore'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['takenBefore'] as int)
-          : null,
-      takenAfter: map['takenAfter'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['takenAfter'] as int)
-          : null,
+      takenBefore: map['takenBefore'] != null ? DateTime.fromMillisecondsSinceEpoch(map['takenBefore'] as int) : null,
+      takenAfter: map['takenAfter'] != null ? DateTime.fromMillisecondsSinceEpoch(map['takenAfter'] as int) : null,
     );
   }
 
@@ -157,8 +150,7 @@ class SearchDateFilter {
       SearchDateFilter.fromMap(json.decode(source) as Map<String, dynamic>);
 
   @override
-  String toString() =>
-      'SearchDateFilter(takenBefore: $takenBefore, takenAfter: $takenAfter)';
+  String toString() => 'SearchDateFilter(takenBefore: $takenBefore, takenAfter: $takenAfter)';
 
   @override
   bool operator ==(covariant SearchDateFilter other) {
@@ -222,20 +214,19 @@ class SearchDisplayFilters {
   bool operator ==(covariant SearchDisplayFilters other) {
     if (identical(this, other)) return true;
 
-    return other.isNotInAlbum == isNotInAlbum &&
-        other.isArchive == isArchive &&
-        other.isFavorite == isFavorite;
+    return other.isNotInAlbum == isNotInAlbum && other.isArchive == isArchive && other.isFavorite == isFavorite;
   }
 
   @override
-  int get hashCode =>
-      isNotInAlbum.hashCode ^ isArchive.hashCode ^ isFavorite.hashCode;
+  int get hashCode => isNotInAlbum.hashCode ^ isArchive.hashCode ^ isFavorite.hashCode;
 }
 
 class SearchFilter {
   String? context;
   String? filename;
-  Set<Person> people;
+  String? description;
+  String? language;
+  Set<PersonDto> people;
   SearchLocationFilter location;
   SearchCameraFilter camera;
   SearchDateFilter date;
@@ -247,6 +238,8 @@ class SearchFilter {
   SearchFilter({
     this.context,
     this.filename,
+    this.description,
+    this.language,
     required this.people,
     required this.location,
     required this.camera,
@@ -255,10 +248,30 @@ class SearchFilter {
     required this.mediaType,
   });
 
+  bool get isEmpty {
+    return (context == null || (context != null && context!.isEmpty)) &&
+        (filename == null || (filename!.isEmpty)) &&
+        (description == null || (description!.isEmpty)) &&
+        people.isEmpty &&
+        location.country == null &&
+        location.state == null &&
+        location.city == null &&
+        camera.make == null &&
+        camera.model == null &&
+        date.takenBefore == null &&
+        date.takenAfter == null &&
+        display.isNotInAlbum == false &&
+        display.isArchive == false &&
+        display.isFavorite == false &&
+        mediaType == AssetType.other;
+  }
+
   SearchFilter copyWith({
     String? context,
     String? filename,
-    Set<Person>? people,
+    String? description,
+    String? language,
+    Set<PersonDto>? people,
     SearchLocationFilter? location,
     SearchCameraFilter? camera,
     SearchDateFilter? date,
@@ -266,8 +279,10 @@ class SearchFilter {
     AssetType? mediaType,
   }) {
     return SearchFilter(
-      context: context,
-      filename: filename,
+      context: context ?? this.context,
+      filename: filename ?? this.filename,
+      description: description ?? this.description,
+      language: language ?? this.language,
       people: people ?? this.people,
       location: location ?? this.location,
       camera: camera ?? this.camera,
@@ -279,7 +294,7 @@ class SearchFilter {
 
   @override
   String toString() {
-    return 'SearchFilter(context: $context, filename: $filename, people: $people, location: $location, camera: $camera, date: $date, display: $display, mediaType: $mediaType)';
+    return 'SearchFilter(context: $context, filename: $filename, description: $description, language: $language, people: $people, location: $location, camera: $camera, date: $date, display: $display, mediaType: $mediaType)';
   }
 
   @override
@@ -288,6 +303,8 @@ class SearchFilter {
 
     return other.context == context &&
         other.filename == filename &&
+        other.description == description &&
+        other.language == language &&
         other.people == people &&
         other.location == location &&
         other.camera == camera &&
@@ -300,6 +317,8 @@ class SearchFilter {
   int get hashCode {
     return context.hashCode ^
         filename.hashCode ^
+        description.hashCode ^
+        language.hashCode ^
         people.hashCode ^
         location.hashCode ^
         camera.hashCode ^

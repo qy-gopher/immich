@@ -5,17 +5,20 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/models/backup/backup_state.model.dart';
+import 'package:immich_mobile/providers/asset.provider.dart';
+import 'package:immich_mobile/providers/auth.provider.dart';
 import 'package:immich_mobile/providers/backup/backup.provider.dart';
 import 'package:immich_mobile/providers/backup/manual_upload.provider.dart';
-import 'package:immich_mobile/providers/auth.provider.dart';
-import 'package:immich_mobile/routing/router.dart';
-import 'package:immich_mobile/providers/asset.provider.dart';
+import 'package:immich_mobile/providers/locale_provider.dart';
 import 'package:immich_mobile/providers/user.provider.dart';
 import 'package:immich_mobile/providers/websocket.provider.dart';
+import 'package:immich_mobile/routing/router.dart';
+import 'package:immich_mobile/utils/bytes_units.dart';
 import 'package:immich_mobile/widgets/common/app_bar_dialog/app_bar_profile_info.dart';
 import 'package:immich_mobile/widgets/common/app_bar_dialog/app_bar_server_info.dart';
 import 'package:immich_mobile/widgets/common/confirm_dialog.dart';
-import 'package:immich_mobile/utils/bytes_units.dart';
+import 'package:immich_mobile/widgets/common/immich_logo.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ImmichAppBarDialog extends HookConsumerWidget {
@@ -23,6 +26,7 @@ class ImmichAppBarDialog extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(localeProvider);
     BackUpState backupState = ref.watch(backupProvider);
     final theme = context.themeData;
     bool isHorizontal = !context.isMobile;
@@ -54,9 +58,7 @@ class ImmichAppBarDialog extends HookConsumerWidget {
           ),
           Center(
             child: Image.asset(
-              context.isDarkTheme
-                  ? 'assets/immich-text-dark.png'
-                  : 'assets/immich-text-light.png',
+              context.isDarkTheme ? 'assets/immich-text-dark.png' : 'assets/immich-text-light.png',
               height: 16,
             ),
           ),
@@ -96,7 +98,7 @@ class ImmichAppBarDialog extends HookConsumerWidget {
     buildSettingButton() {
       return buildActionButton(
         Icons.settings_outlined,
-        "profile_drawer_settings",
+        "settings",
         () => context.pushRoute(const SettingsRoute()),
       );
     }
@@ -112,7 +114,7 @@ class ImmichAppBarDialog extends HookConsumerWidget {
     buildSignOutButton() {
       return buildActionButton(
         Icons.logout_rounded,
-        "profile_drawer_sign_out",
+        "sign_out",
         () async {
           if (isLoggingOut.value) {
             return;
@@ -124,17 +126,14 @@ class ImmichAppBarDialog extends HookConsumerWidget {
               return ConfirmDialog(
                 title: "app_bar_signout_dialog_title",
                 content: "app_bar_signout_dialog_content",
-                ok: "app_bar_signout_dialog_ok",
+                ok: "yes",
                 onOk: () async {
                   isLoggingOut.value = true;
-                  await ref
-                      .read(authProvider.notifier)
-                      .logout()
-                      .whenComplete(() => isLoggingOut.value = false);
+                  await ref.read(authProvider.notifier).logout().whenComplete(() => isLoggingOut.value = false);
 
                   ref.read(manualUploadProvider.notifier).cancelBackup();
                   ref.read(backupProvider.notifier).cancelBackup();
-                  ref.read(assetProvider.notifier).clearAllAsset();
+                  ref.read(assetProvider.notifier).clearAllAssets();
                   ref.read(websocketProvider.notifier).disconnect();
                   context.replaceRoute(const LoginRoute());
                 },
@@ -192,18 +191,16 @@ class ImmichAppBarDialog extends HookConsumerWidget {
                     child: LinearProgressIndicator(
                       minHeight: 10.0,
                       value: percentage,
-                      borderRadius:
-                          const BorderRadius.all(Radius.circular(10.0)),
+                      borderRadius: const BorderRadius.all(Radius.circular(10.0)),
                     ),
                   ),
                   Padding(
                     padding: const EdgeInsets.only(top: 12.0),
-                    child:
-                        const Text('backup_controller_page_storage_format').tr(
-                      args: [
-                        usedDiskSpace,
-                        totalDiskSpace,
-                      ],
+                    child: const Text('backup_controller_page_storage_format').tr(
+                      namedArgs: {
+                        'used': usedDiskSpace,
+                        'total': totalDiskSpace,
+                      },
                     ),
                   ),
                 ],
@@ -229,7 +226,7 @@ class ImmichAppBarDialog extends HookConsumerWidget {
                 );
               },
               child: Text(
-                "profile_drawer_documentation",
+                "documentation",
                 style: context.textTheme.bodySmall,
               ).tr(),
             ),
@@ -253,6 +250,28 @@ class ImmichAppBarDialog extends HookConsumerWidget {
                 style: context.textTheme.bodySmall,
               ).tr(),
             ),
+            const SizedBox(
+              width: 20,
+              child: Text(
+                "•",
+                textAlign: TextAlign.center,
+              ),
+            ),
+            InkWell(
+              onTap: () async {
+                context.pop();
+                final packageInfo = await PackageInfo.fromPlatform();
+                showLicensePage(
+                  context: context,
+                  applicationIcon: const Padding(
+                    padding: EdgeInsetsGeometry.symmetric(vertical: 10),
+                    child: ImmichLogo(size: 40),
+                  ),
+                  applicationVersion: packageInfo.version,
+                );
+              },
+              child: Text("licenses", style: context.textTheme.bodySmall).tr(),
+            ),
           ],
         ),
       );
@@ -272,8 +291,10 @@ class ImmichAppBarDialog extends HookConsumerWidget {
           right: horizontalPadding,
           bottom: isHorizontal ? 20 : 100,
         ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(
+            Radius.circular(20),
+          ),
         ),
         child: SizedBox(
           child: SingleChildScrollView(
