@@ -20,8 +20,7 @@ jobs:
   pre-job:
     runs-on: ubuntu-latest
     outputs:
-      should_run_server: ${{ steps.found_paths.outputs.server == 'true' || steps.should_force.outputs.should_force == 'true' }}
-      should_run_ml: ${{ steps.found_paths.outputs.machine-learning == 'true' || steps.should_force.outputs.should_force == 'true' }}
+      should_run: ${{ steps.check.outputs.should_run }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
