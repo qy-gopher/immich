@@ -235,7 +235,7 @@ class _PlacesCollectionCard extends StatelessWidget {
                   child: IgnorePointer(
                     child: MapThumbnail(
                       zoom: 8,
-                      centre: const LatLng(21.44950, -157.91959),
+                      centre: const LatLng(32.5, 118),
                       showAttribution: false,
                       themeMode: context.isDarkTheme ? ThemeMode.dark : ThemeMode.light,
                     ),
